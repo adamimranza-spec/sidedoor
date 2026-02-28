@@ -1,0 +1,1590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sidedoor &mdash; Skip the line. Land the role.</title>
+  <meta name="description" content="Bypass the ATS black hole. Get the right decision-maker targets, LinkedIn instructions, and a ready-to-send 3-email cold sequence &mdash; tailored to your job application." />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,700;1,300&display=swap" rel="stylesheet" />
+
+  <!-- PDF.js for parsing uploaded PDFs -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <!-- Mammoth.js for parsing .docx files -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+  <!-- jsPDF for generating the download PDF -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+  <style>
+    /* ─── Tokens ──────────────────────────────────────────────────── */
+    :root {
+      --bg:           #060606;
+      --surface:      #0e0e0e;
+      --surface2:     #161616;
+      --border:       #1f1f1f;
+      --border-hi:    #2e2e2e;
+      --accent:       #c4ff40;
+      --accent-dim:   rgba(196,255,64,0.08);
+      --accent-glow:  rgba(196,255,64,0.15);
+      --text:         #f0f0f0;
+      --muted:        #aaa;
+      --muted-dim:    #555;
+      --err-bg:       rgba(255,70,70,0.06);
+      --err-border:   rgba(255,70,70,0.22);
+      --err-text:     #ff6b6b;
+      --font-display: 'Bebas Neue', sans-serif;
+      --font-mono:    'JetBrains Mono', monospace;
+      --max:          780px;
+    }
+
+    /* ─── Reset ───────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-mono);
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    /* ─── Background grid ─────────────────────────────────────────── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(196,255,64,0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(196,255,64,0.025) 1px, transparent 1px);
+      background-size: 48px 48px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ─── Layout ──────────────────────────────────────────────────── */
+    #app {
+      max-width: var(--max);
+      margin: 0 auto;
+      padding: 0 24px 100px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* ─── Header ──────────────────────────────────────────────────── */
+    .site-header {
+      padding: 72px 0 56px;
+      position: relative;
+    }
+
+    .header-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.62rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--accent);
+      border: 1px solid rgba(196,255,64,0.25);
+      padding: 5px 12px;
+      margin-bottom: 24px;
+    }
+
+    .header-badge::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      background: var(--accent);
+      border-radius: 50%;
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    .logo {
+      font-family: var(--font-display);
+      font-size: clamp(5rem, 18vw, 9rem);
+      line-height: 0.9;
+      letter-spacing: 0.02em;
+      color: var(--text);
+      display: block;
+      position: relative;
+    }
+
+    .logo .accent-letter { color: var(--accent); }
+
+    .header-rule {
+      width: 100%;
+      height: 1px;
+      background: linear-gradient(90deg, var(--accent) 0%, transparent 60%);
+      margin: 20px 0 16px;
+    }
+
+    .tagline-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .tagline {
+      font-size: 0.72rem;
+      color: var(--muted);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .stat-row {
+      display: flex;
+      gap: 20px;
+    }
+
+    .stat {
+      font-size: 0.62rem;
+      color: var(--muted-dim);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .stat span { color: var(--accent); font-weight: 700; }
+
+    /* ─── Hero Copy ───────────────────────────────────────────────── */
+    .hero-copy {
+      padding: 0 0 52px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 48px;
+    }
+
+    .hero-stat {
+      font-family: var(--font-display);
+      font-size: clamp(1.8rem, 5.5vw, 2.8rem);
+      line-height: 1.05;
+      color: var(--text);
+      margin-bottom: 18px;
+      letter-spacing: 0.03em;
+    }
+
+    .hero-stat .hl { color: var(--accent); }
+
+    .hero-hook {
+      font-size: 0.9rem;
+      color: var(--muted);
+      line-height: 1.75;
+      margin-bottom: 24px;
+      letter-spacing: 0.01em;
+    }
+
+    .hero-hook em {
+      font-style: normal;
+      color: var(--text);
+    }
+
+    .hero-desc {
+      font-size: 0.85rem;
+      color: var(--text);
+      line-height: 2;
+      max-width: 560px;
+      opacity: 0.8;
+    }
+
+    /* ─── Section Labels ──────────────────────────────────────────── */
+    .section-label {
+      font-size: 0.6rem;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 28px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .section-label::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* ─── Form ────────────────────────────────────────────────────── */
+    .form-section { margin-bottom: 40px; }
+    .form-group { margin-bottom: 20px; }
+
+    .form-label {
+      display: block;
+      font-size: 0.62rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      margin-bottom: 8px;
+    }
+
+    input[type="text"],
+    textarea,
+    select {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 0;
+      color: var(--text);
+      font-family: var(--font-mono);
+      font-size: 0.84rem;
+      padding: 14px 16px;
+      transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+      appearance: none;
+      -webkit-appearance: none;
+      outline: none;
+      line-height: 1.5;
+    }
+
+    input[type="text"]:focus,
+    textarea:focus,
+    select:focus {
+      border-color: var(--accent);
+      background: var(--surface2);
+      box-shadow: 0 0 0 3px var(--accent-glow), inset 0 0 0 1px var(--accent);
+    }
+
+    input[type="text"]::placeholder,
+    textarea::placeholder { color: var(--muted-dim); }
+
+    textarea {
+      resize: vertical;
+      line-height: 1.7;
+      min-height: 140px;
+    }
+
+    #job-desc { min-height: 200px; }
+
+    select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23777' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 14px center;
+      padding-right: 38px;
+      cursor: pointer;
+    }
+
+    select option { background: #0e0e0e; }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 180px;
+      gap: 16px;
+      align-items: start;
+    }
+
+    @media (max-width: 500px) {
+      .form-row { grid-template-columns: 1fr; }
+    }
+
+    /* ─── CV Upload Zone ──────────────────────────────────────────── */
+    .upload-zone {
+      border: 1px dashed var(--border-hi);
+      padding: 28px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      position: relative;
+      background: var(--surface);
+    }
+
+    .upload-zone:hover,
+    .upload-zone.drag-over {
+      border-color: var(--accent);
+      background: var(--accent-dim);
+    }
+
+    .upload-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+
+    .upload-icon {
+      font-size: 1.6rem;
+      margin-bottom: 10px;
+      display: block;
+      line-height: 1;
+    }
+
+    .upload-label {
+      font-size: 0.78rem;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .upload-label strong {
+      color: var(--accent);
+      font-weight: 500;
+    }
+
+    .upload-formats {
+      font-size: 0.62rem;
+      color: var(--muted-dim);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-top: 6px;
+    }
+
+    .upload-success {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.78rem;
+      color: var(--accent);
+      justify-content: center;
+    }
+
+    .upload-success.show { display: flex; }
+    .upload-success .file-name { color: var(--text); }
+
+    .upload-clear {
+      background: none;
+      border: none;
+      color: var(--err-text);
+      cursor: pointer;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      padding: 2px 6px;
+      transition: opacity 0.15s;
+    }
+
+    .upload-clear:hover { opacity: 0.7; }
+
+    .divider-or {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 14px 0;
+      font-size: 0.6rem;
+      color: var(--muted);
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+    }
+
+    .divider-or::before,
+    .divider-or::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* ─── Parsing indicator ───────────────────────────────────────── */
+    .parsing-indicator {
+      display: none;
+      font-size: 0.72rem;
+      color: var(--muted);
+      padding: 8px 0;
+      animation: blink 1s ease-in-out infinite;
+    }
+
+    .parsing-indicator.show { display: block; }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.4; }
+    }
+
+    /* ─── Generate Button ─────────────────────────────────────────── */
+    #generate-btn {
+      width: 100%;
+      padding: 18px 24px;
+      background: var(--accent);
+      color: #060606;
+      border: none;
+      border-radius: 0;
+      font-family: var(--font-display);
+      font-weight: 400;
+      font-size: 1.4rem;
+      letter-spacing: 0.08em;
+      cursor: pointer;
+      margin-top: 28px;
+      transition: transform 0.12s ease, box-shadow 0.15s ease, opacity 0.15s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    #generate-btn::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: rgba(255,255,255,0.12);
+      transform: translateX(-100%);
+      transition: transform 0.3s ease;
+    }
+
+    #generate-btn:hover:not(:disabled)::after { transform: translateX(0); }
+
+    #generate-btn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 14px 40px rgba(196,255,64,0.28);
+    }
+
+    #generate-btn:active:not(:disabled) {
+      transform: translateY(0);
+      box-shadow: 0 4px 14px rgba(196,255,64,0.18);
+    }
+
+    #generate-btn:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+
+    #regenerate-btn {
+      display: none;
+      width: 100%;
+      padding: 12px 24px;
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 0;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      cursor: pointer;
+      margin-top: 10px;
+      transition: color 0.15s, border-color 0.15s;
+      letter-spacing: 0.08em;
+    }
+
+    #regenerate-btn:hover {
+      color: var(--text);
+      border-color: var(--border-hi);
+    }
+
+    #regenerate-btn.show { display: block; }
+
+    /* ─── Loading ─────────────────────────────────────────────────── */
+    #loading-state {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      padding: 56px 0;
+    }
+
+    #loading-state.show { display: flex; }
+
+    .loading-text {
+      font-size: 0.72rem;
+      color: var(--muted);
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+    }
+
+    .loading-bar {
+      width: 200px;
+      height: 2px;
+      background: var(--border);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .loading-bar::after {
+      content: '';
+      position: absolute;
+      left: -40%;
+      top: 0;
+      width: 40%;
+      height: 100%;
+      background: var(--accent);
+      animation: loading-sweep 1.2s ease-in-out infinite;
+    }
+
+    @keyframes loading-sweep {
+      0%   { left: -40%; }
+      100% { left: 100%; }
+    }
+
+    /* ─── Error ───────────────────────────────────────────────────── */
+    #error-banner {
+      display: none;
+      background: var(--err-bg);
+      border: 1px solid var(--err-border);
+      border-left: 3px solid var(--err-text);
+      color: var(--err-text);
+      font-size: 0.8rem;
+      padding: 14px 18px;
+      margin-top: 16px;
+      line-height: 1.6;
+    }
+
+    #error-banner.show { display: block; }
+
+    /* ─── Output ──────────────────────────────────────────────────── */
+    #output-section {
+      display: none;
+      flex-direction: column;
+      gap: 2px;
+      margin-top: 56px;
+    }
+
+    #output-section.show { display: flex; }
+
+    .output-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .output-title {
+      font-family: var(--font-display);
+      font-size: 2rem;
+      letter-spacing: 0.06em;
+      color: var(--text);
+    }
+
+    #download-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 18px;
+      background: transparent;
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+      border-radius: 0;
+    }
+
+    #download-btn:hover {
+      background: var(--accent);
+      color: #060606;
+    }
+
+    #download-btn svg { width: 14px; height: 14px; flex-shrink: 0; }
+
+    .output-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      opacity: 0;
+      transform: translateY(12px);
+      animation: card-in 0.4s ease forwards;
+    }
+
+    .output-card:nth-child(2) { animation-delay: 0ms; }
+    .output-card:nth-child(3) { animation-delay: 80ms; }
+    .output-card:nth-child(4) { animation-delay: 160ms; }
+    .output-card:nth-child(5) { animation-delay: 240ms; }
+
+    @keyframes card-in {
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 22px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .card-num {
+      font-family: var(--font-display);
+      font-size: 0.9rem;
+      color: var(--accent);
+      letter-spacing: 0.1em;
+    }
+
+    .card-title {
+      font-size: 0.68rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .card-body { padding: 22px; }
+
+    /* ─── Decision Makers ─────────────────────────────────────────── */
+    .title-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .title-chip {
+      background: var(--accent-dim);
+      border: 1px solid rgba(196,255,64,0.2);
+      color: var(--accent);
+      font-size: 0.75rem;
+      padding: 6px 14px;
+      letter-spacing: 0.04em;
+    }
+
+    .guidance-text {
+      font-size: 0.8rem;
+      color: var(--muted);
+      line-height: 1.7;
+      border-left: 2px solid var(--border-hi);
+      padding-left: 14px;
+    }
+
+    /* ─── LinkedIn Steps ──────────────────────────────────────────── */
+    .steps-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .step {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      font-size: 0.8rem;
+      line-height: 1.6;
+    }
+
+    .step-num {
+      font-family: var(--font-display);
+      font-size: 1.1rem;
+      color: var(--accent);
+      min-width: 22px;
+      letter-spacing: 0.05em;
+      line-height: 1.3;
+    }
+
+    .connection-note-box {
+      background: var(--surface2);
+      border: 1px solid var(--border-hi);
+      border-left: 2px solid var(--accent);
+      padding: 14px 16px;
+    }
+
+    .connection-note-label {
+      font-size: 0.6rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .connection-note-text {
+      font-size: 0.8rem;
+      color: var(--text);
+      line-height: 1.65;
+      font-style: italic;
+    }
+
+    /* ─── Email Tools ─────────────────────────────────────────────── */
+    .tools-list {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      background: var(--border);
+    }
+
+    .tool-row {
+      display: grid;
+      grid-template-columns: 120px 1fr;
+      background: var(--surface);
+    }
+
+    .tool-name {
+      padding: 14px 16px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: var(--accent);
+      border-right: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+    }
+
+    .tool-detail { padding: 14px 16px; }
+
+    .tool-desc {
+      font-size: 0.78rem;
+      color: var(--text);
+      line-height: 1.5;
+      margin-bottom: 4px;
+    }
+
+    .tool-note {
+      font-size: 0.68rem;
+      color: var(--muted);
+    }
+
+    /* ─── Email Cards ─────────────────────────────────────────────── */
+    .email-cards {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      background: var(--border);
+      margin-bottom: 16px;
+    }
+
+    .email-card {
+      background: var(--surface2);
+      padding: 18px 20px;
+    }
+
+    .email-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .email-day-tag {
+      font-size: 0.6rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--accent);
+      background: var(--accent-dim);
+      border: 1px solid rgba(196,255,64,0.2);
+      padding: 3px 10px;
+    }
+
+    .copy-btn {
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      background: transparent;
+      border: 1px solid var(--border-hi);
+      padding: 4px 12px;
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s, background 0.15s;
+    }
+
+    .copy-btn:hover,
+    .copy-btn.copied {
+      color: var(--accent);
+      border-color: var(--accent);
+      background: var(--accent-dim);
+    }
+
+    .email-subject-row {
+      font-size: 0.72rem;
+      color: var(--muted);
+      margin-bottom: 14px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .email-subject-row strong {
+      color: var(--text);
+      font-weight: 500;
+    }
+
+    .email-body {
+      font-size: 0.82rem;
+      color: var(--text);
+      line-height: 1.8;
+      white-space: pre-wrap;
+    }
+
+    .cadence-note {
+      font-size: 0.75rem;
+      color: var(--muted);
+      line-height: 1.75;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-left: 2px solid var(--accent);
+      padding: 14px 16px;
+    }
+
+    /* ─── Toast ───────────────────────────────────────────────────── */
+    #toast {
+      position: fixed;
+      bottom: 28px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: var(--accent);
+      color: #060606;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 10px 24px;
+      opacity: 0;
+      transition: opacity 0.2s, transform 0.2s;
+      pointer-events: none;
+      z-index: 999;
+    }
+
+    #toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* ─── Footer ──────────────────────────────────────────────────── */
+    .site-footer {
+      text-align: center;
+      padding: 48px 0 40px;
+      font-size: 0.65rem;
+      color: var(--muted);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .site-footer a {
+      color: var(--muted);
+      text-decoration: none;
+      border-bottom: 1px solid var(--border-hi);
+      transition: color 0.15s, border-color 0.15s;
+    }
+
+    .site-footer a:hover {
+      color: var(--accent);
+      border-color: var(--accent);
+    }
+
+    /* ─── Responsive ──────────────────────────────────────────────── */
+    @media (max-width: 600px) {
+      .tool-row { grid-template-columns: 1fr; }
+      .tool-name { border-right: none; border-bottom: 1px solid var(--border); }
+      .stat-row { display: none; }
+      .output-header { flex-direction: column; align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ─── Header ──────────────────────────────────────────────────── -->
+  <header class="site-header">
+    <div class="header-badge">Outreach Intelligence</div>
+    <div class="logo">SIDE<span class="accent-letter">D</span>OOR</div>
+    <div class="header-rule"></div>
+    <div class="tagline-row">
+      <div class="tagline">Skip the line. Land the role.</div>
+      <div class="stat-row">
+        <div class="stat"><span>50K+</span> emails sent</div>
+        <div class="stat"><span>6%+</span> reply rate</div>
+        <div class="stat"><span>200+</span> meetings booked</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ─── Hero Copy ──────────────────────────────────────────────── -->
+  <div class="hero-copy">
+    <div class="hero-stat"><span class="hl">98%</span> of job applications go nowhere.</div>
+    <div class="hero-hook">Not because you&rsquo;re unqualified. <em>Because no one saw them.</em></div>
+    <p class="hero-desc">Sidedoor helps you skip the queue. Paste the job description and your CV. We&rsquo;ll tell you who to contact directly, how to find them, and give you a 3-email sequence written and ready to send.</p>
+  </div>
+
+  <!-- ─── Form ────────────────────────────────────────────────────── -->
+  <div class="form-section">
+    <div class="section-label">01 &mdash; Mission Brief</div>
+
+    <!-- Job Description -->
+    <div class="form-group">
+      <label class="form-label" for="job-desc">Job Description</label>
+      <textarea id="job-desc" placeholder="Paste the full job description here &mdash; the more detail, the better the output..."></textarea>
+    </div>
+
+    <!-- CV Upload -->
+    <div class="form-group">
+      <label class="form-label">Your CV / Resume</label>
+
+      <div class="upload-zone" id="upload-zone">
+        <input type="file" id="cv-file" accept=".pdf,.doc,.docx" />
+        <span class="upload-icon">&#11014;</span>
+        <div class="upload-label">
+          <strong>Click to upload</strong> or drag and drop your CV
+        </div>
+        <div class="upload-formats">PDF &middot; Word (.docx)</div>
+      </div>
+
+      <div class="upload-success" id="upload-success">
+        <span>&#10003;</span>
+        <span class="file-name" id="file-name-display"></span>
+        <button class="upload-clear" id="upload-clear">Remove</button>
+      </div>
+
+      <div class="parsing-indicator" id="parsing-indicator">Parsing CV&hellip;</div>
+
+      <div class="divider-or">or type it below</div>
+
+      <textarea id="background" placeholder="Paste your background, skills, and experience here &mdash; or it will be filled automatically when you upload your CV..."></textarea>
+    </div>
+
+    <!-- Company Info -->
+    <div class="form-row">
+      <div class="form-group" style="margin-bottom:0">
+        <label class="form-label" for="company-name">Company Name</label>
+        <input type="text" id="company-name" placeholder="e.g. Stripe, Notion, Figma&hellip;" />
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label class="form-label" for="company-size">Company Size</label>
+        <select id="company-size">
+          <option value="">Select&hellip;</option>
+          <option value="under50">Under 50</option>
+          <option value="50to200">50&ndash;200</option>
+          <option value="200plus">200+</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Error -->
+    <div id="error-banner"></div>
+
+    <!-- CTA -->
+    <button id="generate-btn">Generate Outreach Kit &rarr;</button>
+    <button id="regenerate-btn">&#8635; Regenerate</button>
+  </div>
+
+  <!-- ─── Loading ──────────────────────────────────────────────────── -->
+  <div id="loading-state">
+    <div class="loading-text">Building your outreach kit&hellip;</div>
+    <div class="loading-bar"></div>
+  </div>
+
+  <!-- ─── Output ───────────────────────────────────────────────────── -->
+  <div id="output-section">
+
+    <div class="output-header">
+      <div class="output-title">YOUR KIT</div>
+      <button id="download-btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        Download PDF
+      </button>
+    </div>
+
+    <!-- Decision Makers -->
+    <div class="output-card">
+      <div class="card-head">
+        <span class="card-num">01</span>
+        <span class="card-title">Decision-Maker Targets</span>
+      </div>
+      <div class="card-body" id="body-decision-makers"></div>
+    </div>
+
+    <!-- LinkedIn -->
+    <div class="output-card">
+      <div class="card-head">
+        <span class="card-num">02</span>
+        <span class="card-title">LinkedIn Search Instructions</span>
+      </div>
+      <div class="card-body" id="body-linkedin"></div>
+    </div>
+
+    <!-- Email Tools -->
+    <div class="output-card">
+      <div class="card-head">
+        <span class="card-num">03</span>
+        <span class="card-title">Email Finder Tools</span>
+      </div>
+      <div class="card-body" id="body-email-tools"></div>
+    </div>
+
+    <!-- Email Sequence -->
+    <div class="output-card">
+      <div class="card-head">
+        <span class="card-num">04</span>
+        <span class="card-title">3-Email Cold Sequence</span>
+      </div>
+      <div class="card-body" id="body-emails"></div>
+    </div>
+
+  </div>
+
+  <footer class="site-footer">
+    Sidedoor &mdash; Built for those who don&rsquo;t wait in line
+    &nbsp;&middot;&nbsp;
+    <a href="https://www.linkedin.com/in/imran-adam-853a80216/" target="_blank" rel="noopener">Feedback? Say hi to Imran</a>
+  </footer>
+
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script>
+// ─── PDF.js worker ────────────────────────────────────────────────
+if (typeof pdfjsLib !== 'undefined') {
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+}
+
+// ─── DOM refs ─────────────────────────────────────────────────────
+const dom = {
+  jobDesc:          document.getElementById('job-desc'),
+  background:       document.getElementById('background'),
+  companyName:      document.getElementById('company-name'),
+  companySize:      document.getElementById('company-size'),
+  generateBtn:      document.getElementById('generate-btn'),
+  regenerateBtn:    document.getElementById('regenerate-btn'),
+  loadingState:     document.getElementById('loading-state'),
+  errorBanner:      document.getElementById('error-banner'),
+  outputSection:    document.getElementById('output-section'),
+  toast:            document.getElementById('toast'),
+  uploadZone:       document.getElementById('upload-zone'),
+  cvFile:           document.getElementById('cv-file'),
+  uploadSuccess:    document.getElementById('upload-success'),
+  fileNameDisplay:  document.getElementById('file-name-display'),
+  uploadClear:      document.getElementById('upload-clear'),
+  parsingIndicator: document.getElementById('parsing-indicator'),
+  downloadBtn:      document.getElementById('download-btn'),
+};
+
+const state = {
+  isLoading: false,
+  outputData: null,
+};
+
+// ─── CV Upload & Parsing ──────────────────────────────────────────
+function showUploadSuccess(filename) {
+  dom.uploadZone.style.display = 'none';
+  dom.uploadSuccess.classList.add('show');
+  dom.fileNameDisplay.textContent = filename;
+}
+
+function resetUpload() {
+  dom.uploadZone.style.display = '';
+  dom.uploadSuccess.classList.remove('show');
+  dom.fileNameDisplay.textContent = '';
+  dom.cvFile.value = '';
+  dom.parsingIndicator.classList.remove('show');
+}
+
+async function parsePDF(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  let text = '';
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    text += content.items.map(item => item.str).join(' ') + '\n';
+  }
+  return text.trim();
+}
+
+async function parseDocx(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const result = await mammoth.extractRawText({ arrayBuffer });
+  return result.value.trim();
+}
+
+async function handleFileUpload(file) {
+  if (!file) return;
+  const name = file.name;
+  const ext  = name.split('.').pop().toLowerCase();
+
+  if (!['pdf', 'doc', 'docx'].includes(ext)) {
+    showError('Please upload a PDF or Word (.docx) file.');
+    return;
+  }
+
+  dom.parsingIndicator.classList.add('show');
+
+  try {
+    let text = '';
+    if (ext === 'pdf') {
+      text = await parsePDF(file);
+    } else {
+      text = await parseDocx(file);
+    }
+
+    if (!text || text.length < 50) {
+      showError('Could not extract text from the file. Try copying and pasting your CV instead.');
+      dom.parsingIndicator.classList.remove('show');
+      return;
+    }
+
+    dom.background.value = text;
+    dom.parsingIndicator.classList.remove('show');
+    showUploadSuccess(name);
+    showToast('CV parsed successfully');
+  } catch (err) {
+    dom.parsingIndicator.classList.remove('show');
+    showError('Could not read the file. Try copying and pasting your CV instead.');
+    console.error('File parse error:', err);
+  }
+}
+
+// ─── Drag and drop ────────────────────────────────────────────────
+// Use a counter so dragleave doesn't fire when moving over child elements
+// (the transparent file input covers the whole zone and would cause flicker)
+let dragCounter = 0;
+
+dom.uploadZone.addEventListener('dragenter', e => {
+  e.preventDefault();
+  dragCounter++;
+  dom.uploadZone.classList.add('drag-over');
+});
+
+dom.uploadZone.addEventListener('dragleave', () => {
+  dragCounter--;
+  if (dragCounter === 0) dom.uploadZone.classList.remove('drag-over');
+});
+
+dom.uploadZone.addEventListener('dragover', e => {
+  e.preventDefault(); // required to allow drop
+});
+
+dom.uploadZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dragCounter = 0;
+  dom.uploadZone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) handleFileUpload(file);
+});
+
+dom.cvFile.addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (file) handleFileUpload(file);
+});
+
+dom.uploadClear.addEventListener('click', () => {
+  resetUpload();
+  dom.background.value = '';
+});
+
+// ─── Validation ───────────────────────────────────────────────────
+function validate() {
+  if (!dom.jobDesc.value.trim())     return 'Paste the job description to continue.';
+  if (!dom.background.value.trim())  return 'Add your background and skills \u2014 upload your CV or type it in.';
+  if (!dom.companyName.value.trim()) return 'Enter the company name to continue.';
+  if (!dom.companySize.value)        return 'Select a company size to continue.';
+  return null;
+}
+
+// ─── API Call ─────────────────────────────────────────────────────
+async function callAPI() {
+  let response;
+  try {
+    response = await fetch('/api/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jobDesc:     dom.jobDesc.value.trim(),
+        background:  dom.background.value.trim(),
+        companyName: dom.companyName.value.trim(),
+        companySize: dom.companySize.value,
+      }),
+    });
+  } catch (err) {
+    throw new Error('Could not reach the server. Check your connection and try again.');
+  }
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error || `Something went wrong (${response.status}). Try again.`);
+  }
+
+  const { result } = await response.json();
+  return result;
+}
+
+// ─── JSON Parsing ─────────────────────────────────────────────────
+function parseResponse(raw) {
+  const text = raw.trim();
+  try { return JSON.parse(text); } catch (_) {}
+  const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenceMatch) { try { return JSON.parse(fenceMatch[1].trim()); } catch (_) {} }
+  const braceMatch = text.match(/\{[\s\S]*\}/);
+  if (braceMatch) { try { return JSON.parse(braceMatch[0]); } catch (_) {} }
+  throw new Error('Unexpected response format. Click Regenerate to try again.');
+}
+
+function validateStructure(d) {
+  for (const s of ['decisionMakers', 'linkedInInstructions', 'emailFinderTools', 'emailSequence']) {
+    if (!d[s]) throw new Error(`Response missing section: ${s}. Click Regenerate.`);
+  }
+  for (const e of ['email1', 'email2', 'email3']) {
+    if (!d.emailSequence[e]?.subject || !d.emailSequence[e]?.body) {
+      throw new Error(`Email sequence incomplete (${e}). Click Regenerate.`);
+    }
+  }
+  if (!Array.isArray(d.decisionMakers.titles) || !d.decisionMakers.titles.length) {
+    throw new Error('Decision-maker titles missing. Click Regenerate.');
+  }
+}
+
+// ─── Render ───────────────────────────────────────────────────────
+function esc(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function renderDecisionMakers(dm) {
+  const chips = dm.titles.map(t => `<div class="title-chip">${esc(t)}</div>`).join('');
+  document.getElementById('body-decision-makers').innerHTML = `
+    <div class="title-chips">${chips}</div>
+    <p class="guidance-text">${esc(dm.guidance)}</p>
+  `;
+}
+
+function renderLinkedIn(li) {
+  const steps = li.steps.map((s, i) => `
+    <div class="step">
+      <span class="step-num">${i + 1}</span>
+      <span>${esc(s)}</span>
+    </div>
+  `).join('');
+  document.getElementById('body-linkedin').innerHTML = `
+    <div class="steps-list">${steps}</div>
+    <div class="connection-note-box">
+      <div class="connection-note-label">Connection request note</div>
+      <div class="connection-note-text">"${esc(li.connectionNote)}"</div>
+    </div>
+  `;
+}
+
+function renderEmailTools(tools) {
+  const rows = tools.map(t => `
+    <div class="tool-row">
+      <div class="tool-name">${esc(t.name)}</div>
+      <div class="tool-detail">
+        <div class="tool-desc">${esc(t.description)}</div>
+        <div class="tool-note">${esc(t.note)}</div>
+      </div>
+    </div>
+  `).join('');
+  document.getElementById('body-email-tools').innerHTML = `<div class="tools-list">${rows}</div>`;
+}
+
+function renderEmailSequence(seq) {
+  const emailDefs = [
+    { key: 'email1' },
+    { key: 'email2' },
+    { key: 'email3' },
+  ];
+
+  const cards = emailDefs.map(({ key }) => {
+    const e = seq[key];
+    return `
+      <div class="email-card">
+        <div class="email-top">
+          <span class="email-day-tag">${esc(e.day)}</span>
+          <button class="copy-btn" data-key="${key}">Copy</button>
+        </div>
+        <div class="email-subject-row">Subject: <strong>${esc(e.subject)}</strong></div>
+        <div class="email-body">${esc(e.body)}</div>
+      </div>
+    `;
+  }).join('');
+
+  document.getElementById('body-emails').innerHTML = `
+    <div class="email-cards">${cards}</div>
+    <div class="cadence-note">${esc(seq.cadenceNote)}</div>
+  `;
+
+  // Read email content directly from the seq object (not from HTML attributes)
+  // HTML attributes normalize whitespace, stripping the \n\n paragraph breaks
+  document.querySelectorAll('.copy-btn').forEach(btn => {
+    const email = seq[btn.dataset.key];
+    btn.addEventListener('click', () => {
+      copyToClipboard(`Subject: ${email.subject}\n\n${email.body}`, btn);
+    });
+  });
+}
+
+function renderOutput(data) {
+  state.outputData = data;
+  renderDecisionMakers(data.decisionMakers);
+  renderLinkedIn(data.linkedInInstructions);
+  renderEmailTools(data.emailFinderTools);
+  renderEmailSequence(data.emailSequence);
+
+  dom.outputSection.querySelectorAll('.output-card').forEach(c => {
+    c.style.animation = 'none';
+    void c.offsetHeight;
+    c.style.animation = '';
+  });
+
+  dom.outputSection.classList.add('show');
+  dom.regenerateBtn.classList.add('show');
+  requestAnimationFrame(() => {
+    dom.outputSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+}
+
+// ─── PDF Download ─────────────────────────────────────────────────
+function downloadPDF() {
+  const data = state.outputData;
+  if (!data) return;
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+
+  const pageW    = 210;
+  const margin   = 18;
+  const contentW = pageW - margin * 2;
+  let y = 20;
+
+  // White-background palette — readable in all PDF viewers and when printed
+  const ink      = [15, 15, 15];      // primary text
+  const mid      = [85, 85, 85];      // secondary text / labels
+  const subtle   = [150, 150, 150];   // notes / hints
+  const headerBg = [15, 15, 15];      // section header bar fill
+  const headerFg = [240, 240, 240];   // section header text
+  const accentFg = [70, 120, 0];      // dark lime — readable on white
+
+  function checkPageBreak(needed = 12) {
+    if (y + needed > 280) { doc.addPage(); y = 20; }
+  }
+
+  function addSectionTitle(num, title) {
+    checkPageBreak(14);
+    doc.setFillColor(...headerBg);
+    doc.rect(margin, y - 5, contentW, 12, 'F');
+    doc.setFontSize(8);
+    doc.setTextColor(...accentFg);
+    doc.setFont('helvetica', 'bold');
+    doc.text(num, margin + 3, y + 2.5);
+    doc.setTextColor(...headerFg);
+    doc.setFont('helvetica', 'normal');
+    doc.text(title.toUpperCase(), margin + 14, y + 2.5);
+    y += 14;
+  }
+
+  function addBodyText(text, size = 9, color = ink) {
+    doc.setFontSize(size);
+    doc.setTextColor(...color);
+    doc.setFont('helvetica', 'normal');
+    const lines = doc.splitTextToSize(String(text || ''), contentW);
+    lines.forEach(line => {
+      checkPageBreak(6);
+      doc.text(line, margin, y);
+      y += 5.5;
+    });
+    y += 2;
+  }
+
+  // ── Header ──
+  doc.setFontSize(28);
+  doc.setTextColor(...ink);
+  doc.setFont('helvetica', 'bold');
+  doc.text('SIDEDOOR', margin, y);
+  y += 10;
+
+  doc.setDrawColor(...ink);
+  doc.setLineWidth(0.5);
+  doc.line(margin, y, pageW - margin, y);
+  y += 6;
+
+  doc.setFontSize(8);
+  doc.setTextColor(...mid);
+  doc.setFont('helvetica', 'normal');
+  doc.text('SKIP THE LINE. LAND THE ROLE.', margin, y);
+  doc.text(
+    `Generated: ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`,
+    pageW - margin, y, { align: 'right' }
+  );
+  y += 14;
+
+  // ── Section 1: Decision Makers ──
+  addSectionTitle('01', 'Decision-Maker Targets');
+  addBodyText(data.decisionMakers.titles.join('  \u00B7  '), 9, ink);
+  addBodyText(data.decisionMakers.guidance, 8.5, mid);
+  y += 4;
+
+  // ── Section 2: LinkedIn ──
+  addSectionTitle('02', 'LinkedIn Search Instructions');
+  data.linkedInInstructions.steps.forEach((step, i) => {
+    checkPageBreak(8);
+    doc.setFontSize(9);
+    doc.setTextColor(...accentFg);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`${i + 1}.`, margin, y);
+    doc.setTextColor(...ink);
+    doc.setFont('helvetica', 'normal');
+    const lines = doc.splitTextToSize(step, contentW - 10);
+    lines.forEach((line, li) => { doc.text(line, margin + 8, y + li * 5); });
+    y += lines.length * 5 + 2;
+  });
+
+  y += 3;
+  doc.setFontSize(8);
+  doc.setTextColor(...mid);
+  doc.text('Connection Request Note:', margin, y);
+  y += 6;
+  addBodyText(`"${data.linkedInInstructions.connectionNote}"`, 8.5, ink);
+  y += 4;
+
+  // ── Section 3: Email Tools ──
+  addSectionTitle('03', 'Email Finder Tools');
+  data.emailFinderTools.forEach(tool => {
+    checkPageBreak(12);
+    doc.setFontSize(9);
+    doc.setTextColor(...ink);
+    doc.setFont('helvetica', 'bold');
+    doc.text(tool.name, margin, y);
+    y += 5.5;
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...mid);
+    const descLines = doc.splitTextToSize(tool.description, contentW);
+    descLines.forEach(line => { doc.text(line, margin, y); y += 5; });
+    doc.setTextColor(...subtle);
+    doc.setFontSize(8);
+    doc.text(tool.note, margin, y);
+    y += 8;
+  });
+
+  // ── Section 4: Email Sequence ──
+  addSectionTitle('04', '3-Email Cold Sequence');
+
+  const emails = [
+    { label: 'EMAIL 1 \u2014 THE DIRECT APPLICATION', data: data.emailSequence.email1 },
+    { label: 'EMAIL 2 \u2014 THE NEW ANGLE',           data: data.emailSequence.email2 },
+    { label: 'EMAIL 3 \u2014 THE FINAL NOTE',          data: data.emailSequence.email3 },
+  ];
+
+  emails.forEach(({ label, data: email }) => {
+    checkPageBreak(20);
+    doc.setFillColor(235, 235, 235);
+    doc.rect(margin, y - 4, contentW, 8, 'F');
+    doc.setFontSize(8);
+    doc.setTextColor(...ink);
+    doc.setFont('helvetica', 'bold');
+    doc.text(label, margin + 3, y + 0.5);
+    doc.setTextColor(...accentFg);
+    doc.text(email.day, pageW - margin - 3, y + 0.5, { align: 'right' });
+    y += 10;
+
+    doc.setFontSize(8.5);
+    doc.setTextColor(...mid);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Subject:', margin, y);
+    doc.setTextColor(...ink);
+    doc.setFont('helvetica', 'bold');
+    const subjectLines = doc.splitTextToSize(email.subject, contentW - 20);
+    doc.text(subjectLines[0], margin + 18, y);
+    y += 8;
+
+    doc.setFont('helvetica', 'normal');
+    const bodyLines = email.body.split('\n');
+    bodyLines.forEach(line => {
+      checkPageBreak(6);
+      if (line.trim() === '') { y += 3; return; }
+      const wrapped = doc.splitTextToSize(line, contentW);
+      doc.setFontSize(8.5);
+      doc.setTextColor(...ink);
+      wrapped.forEach(wl => { doc.text(wl, margin, y); y += 5; });
+    });
+    y += 8;
+  });
+
+  // ── Cadence note ──
+  checkPageBreak(20);
+  doc.setDrawColor(...ink);
+  doc.setLineWidth(0.4);
+  doc.line(margin, y, margin, y + 18);
+  doc.setFontSize(8);
+  doc.setTextColor(...mid);
+  const cadenceLines = doc.splitTextToSize(data.emailSequence.cadenceNote, contentW - 8);
+  cadenceLines.forEach(line => {
+    if (y > 280) return;
+    doc.text(line, margin + 5, y);
+    y += 4.8;
+  });
+
+  doc.save('sidedoor-outreach-kit.pdf');
+  showToast('PDF downloaded');
+}
+
+// ─── Copy & Toast ─────────────────────────────────────────────────
+async function copyToClipboard(text, btn) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch (_) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0;';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+  }
+  if (btn) {
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2200);
+  }
+  showToast('Copied to clipboard');
+}
+
+let toastTimer;
+function showToast(msg) {
+  dom.toast.textContent = msg;
+  dom.toast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => dom.toast.classList.remove('show'), 2200);
+}
+
+// ─── Loading / Error ──────────────────────────────────────────────
+function setLoading(on) {
+  state.isLoading = on;
+  dom.loadingState.classList.toggle('show', on);
+  dom.generateBtn.disabled = on;
+  dom.generateBtn.textContent = on ? 'Building kit\u2026' : 'Generate Outreach Kit \u2192';
+  dom.regenerateBtn.disabled = on;
+  if (on) clearError();
+}
+
+function showError(msg) {
+  dom.errorBanner.textContent = msg;
+  dom.errorBanner.classList.add('show');
+  dom.errorBanner.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function clearError() {
+  dom.errorBanner.textContent = '';
+  dom.errorBanner.classList.remove('show');
+}
+
+// ─── Main Handler ─────────────────────────────────────────────────
+async function handleGenerate() {
+  if (state.isLoading) return;
+  clearError();
+
+  const err = validate();
+  if (err) { showError(err); return; }
+
+  setLoading(true);
+  dom.outputSection.classList.remove('show');
+
+  try {
+    const raw  = await callAPI();
+    const data = parseResponse(raw);
+    validateStructure(data);
+    renderOutput(data);
+  } catch (e) {
+    showError(e.message || 'Something went wrong. Try again.');
+  } finally {
+    setLoading(false);
+  }
+}
+
+// ─── Event Listeners ──────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  dom.generateBtn.addEventListener('click', handleGenerate);
+  dom.regenerateBtn.addEventListener('click', handleGenerate);
+  dom.downloadBtn.addEventListener('click', downloadPDF);
+  dom.companyName.addEventListener('keydown', e => { if (e.key === 'Enter') handleGenerate(); });
+});
+</script>
+
+</body>
+</html>
