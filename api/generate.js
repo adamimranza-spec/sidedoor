@@ -255,10 +255,12 @@ function titleToSeniority(title) {
   return 'Director';
 }
 
-async function searchPerson(prospeoKey, companyName, jobTitle) {
+// Returns an array of up to `limit` raw search result objects for a given title.
+// Tries 3 strategies in order, stopping as soon as one returns results.
+async function searchPerson(prospeoKey, companyName, jobTitle, limit = 3) {
   const headers = { 'Content-Type': 'application/json', 'X-KEY': prospeoKey };
 
-  // Attempt 1: exact job title
+  // Attempt 1: exact job title match
   try {
     const res = await fetch(PROSPEO_SEARCH, {
       method: 'POST',
@@ -273,11 +275,11 @@ async function searchPerson(prospeoKey, companyName, jobTitle) {
     });
     if (res.ok) {
       const data = await res.json();
-      if (!data.error && data.results?.length > 0) return data.results[0];
+      if (!data.error && data.results?.length > 0) return data.results.slice(0, limit);
     }
   } catch (_) {}
 
-  // Attempt 2: seniority fallback
+  // Attempt 2: seniority level at this company
   try {
     const seniority = titleToSeniority(jobTitle);
     const res = await fetch(PROSPEO_SEARCH, {
@@ -293,11 +295,40 @@ async function searchPerson(prospeoKey, companyName, jobTitle) {
     });
     if (res.ok) {
       const data = await res.json();
-      if (!data.error && data.results?.length > 0) return data.results[0];
+      if (!data.error && data.results?.length > 0) return data.results.slice(0, limit);
     }
   } catch (_) {}
 
-  return null;
+  // Attempt 3: broaden to multiple adjacent seniority levels
+  // (catches cases where org uses non-standard titling)
+  try {
+    const seniority = titleToSeniority(jobTitle);
+    const broadSeniorities = seniority === 'C-Level'
+      ? ['C-Level', 'Founder/Owner', 'VP']
+      : seniority === 'VP'
+      ? ['VP', 'C-Level', 'Director']
+      : seniority === 'Director'
+      ? ['Director', 'VP', 'Manager']
+      : ['Manager', 'Director'];
+
+    const res = await fetch(PROSPEO_SEARCH, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        page: 1,
+        filters: {
+          company: { names: { include: [companyName] } },
+          person_seniority: { include: broadSeniorities },
+        },
+      }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (!data.error && data.results?.length > 0) return data.results.slice(0, limit);
+    }
+  } catch (_) {}
+
+  return [];
 }
 
 async function enrichPerson(prospeoKey, linkedinUrl) {
@@ -320,30 +351,31 @@ async function enrichPerson(prospeoKey, linkedinUrl) {
 }
 
 async function findContacts(prospeoKey, companyName, titles) {
-  const topTitles = titles.slice(0, 2);
-
-  // Search for a person for each title in parallel
+  // Search all titles (up to 3) in parallel, each returning up to 3 candidates
   const searchResults = await Promise.all(
-    topTitles.map(title => searchPerson(prospeoKey, companyName, title).catch(() => null))
+    titles.map(title => searchPerson(prospeoKey, companyName, title).catch(() => []))
   );
 
-  // Deduplicate by LinkedIn URL before enriching
+  // Flatten all candidates, deduplicate by LinkedIn URL, cap at 5 to enrich
   const seen = new Set();
   const toEnrich = [];
-  for (const result of searchResults) {
-    if (!result) continue;
-    const linkedinUrl = result.person?.linkedin_url;
-    if (!linkedinUrl || seen.has(linkedinUrl)) continue;
-    seen.add(linkedinUrl);
-    toEnrich.push({ result, linkedinUrl });
+  for (const results of searchResults) {
+    for (const result of results) {
+      const linkedinUrl = result?.person?.linkedin_url;
+      if (!linkedinUrl || seen.has(linkedinUrl)) continue;
+      seen.add(linkedinUrl);
+      toEnrich.push(linkedinUrl);
+      if (toEnrich.length >= 5) break;
+    }
+    if (toEnrich.length >= 5) break;
   }
 
-  // Enrich each unique person in parallel
+  // Enrich all candidates in parallel
   const enriched = await Promise.all(
-    toEnrich.map(({ linkedinUrl }) => enrichPerson(prospeoKey, linkedinUrl).catch(() => null))
+    toEnrich.map(url => enrichPerson(prospeoKey, url).catch(() => null))
   );
 
-  // Build final contacts array
+  // Build final contacts array — only keep those with a verified email
   const contacts = [];
   for (const data of enriched) {
     if (!data) continue;
