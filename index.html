@@ -803,6 +803,78 @@
       padding: 14px 16px;
     }
 
+    /* ─── Found Contacts (Card 05) ───────────────────────────────── */
+    .contacts-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    .contact-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 14px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .contact-row:last-child {
+      border-bottom: none;
+    }
+
+    .contact-name {
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--text);
+    }
+
+    .contact-title {
+      font-size: 0.72rem;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    .contact-right {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    .contact-email-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .contact-email {
+      font-size: 0.8rem;
+      color: var(--accent);
+      font-family: var(--font-mono);
+    }
+
+    .contact-copy-btn {
+      font-size: 0.65rem;
+      padding: 3px 8px;
+    }
+
+    .contact-linkedin {
+      font-size: 0.65rem;
+      color: var(--muted);
+      text-decoration: none;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      border-bottom: 1px solid var(--border-hi);
+      transition: color 0.15s, border-color 0.15s;
+    }
+
+    .contact-linkedin:hover {
+      color: var(--accent);
+      border-color: var(--accent);
+    }
+
     /* ─── Toast ───────────────────────────────────────────────────── */
     #toast {
       position: fixed;
@@ -1001,6 +1073,15 @@
         <span class="card-title">3-Email Cold Sequence</span>
       </div>
       <div class="card-body" id="body-emails"></div>
+    </div>
+
+    <!-- Found Contacts -->
+    <div class="output-card" id="card-contacts" style="display:none">
+      <div class="card-head">
+        <span class="card-num">05</span>
+        <span class="card-title">Decision-Maker Emails Found</span>
+      </div>
+      <div class="card-body" id="body-contacts"></div>
     </div>
 
   </div>
@@ -1300,12 +1381,46 @@ function renderEmailSequence(seq) {
   });
 }
 
+function renderFoundContacts(contacts) {
+  const card = document.getElementById('card-contacts');
+  const body = document.getElementById('body-contacts');
+
+  if (!contacts || contacts.length === 0) {
+    card.style.display = 'none';
+    return;
+  }
+
+  const rows = contacts.map(c => `
+    <div class="contact-row">
+      <div class="contact-info">
+        <div class="contact-name">${esc(c.name)}</div>
+        <div class="contact-title">${esc(c.title)}</div>
+      </div>
+      <div class="contact-right">
+        <div class="contact-email-wrap">
+          <span class="contact-email">${esc(c.email)}</span>
+          <button class="copy-btn contact-copy-btn" data-email="${esc(c.email)}">Copy</button>
+        </div>
+        ${c.linkedin ? `<a class="contact-linkedin" href="${esc(c.linkedin)}" target="_blank" rel="noopener">LinkedIn</a>` : ''}
+      </div>
+    </div>
+  `).join('');
+
+  body.innerHTML = `<div class="contacts-list">${rows}</div>`;
+  card.style.display = '';
+
+  body.querySelectorAll('.contact-copy-btn').forEach(btn => {
+    btn.addEventListener('click', () => copyToClipboard(btn.dataset.email, btn));
+  });
+}
+
 function renderOutput(data) {
   state.outputData = data;
   renderDecisionMakers(data.decisionMakers);
   renderLinkedIn(data.linkedInInstructions);
   renderEmailTools(data.emailFinderTools);
   renderEmailSequence(data.emailSequence);
+  renderFoundContacts(data.foundContacts);
 
   dom.outputSection.querySelectorAll('.output-card').forEach(c => {
     c.style.animation = 'none';

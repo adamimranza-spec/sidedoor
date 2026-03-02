@@ -1,9 +1,11 @@
 // api/generate.js
-// Vercel serverless function — calls Claude API securely on the server.
-// The ANTHROPIC_API_KEY environment variable must be set in your Vercel project settings.
+// Vercel serverless function — calls Claude API and Prospeo API securely on the server.
+// Required env vars: ANTHROPIC_API_KEY, PROSPEO_API_KEY
 
-const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages';
-const MODEL         = 'claude-sonnet-4-5';
+const ANTHROPIC_API    = 'https://api.anthropic.com/v1/messages';
+const MODEL            = 'claude-sonnet-4-5';
+const PROSPEO_SEARCH   = 'https://api.prospeo.io/search-person';
+const PROSPEO_ENRICH   = 'https://api.prospeo.io/enrich-person';
 
 // ─── System Prompt ───────────────────────────────────────────────────────────
 // This lives server-side only. Never exposed to the browser.
@@ -231,21 +233,147 @@ ${background}
 Return ONLY valid JSON. No markdown. No code fences. No text before or after the JSON.`;
 }
 
+// ─── Claude JSON Parser (mirrors frontend fallback logic) ─────────────────────
+function parseClaudeJSON(text) {
+  const t = text.trim();
+  try { return JSON.parse(t); } catch (_) {}
+  const fenceMatch = t.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenceMatch) { try { return JSON.parse(fenceMatch[1].trim()); } catch (_) {} }
+  const braceMatch = t.match(/\{[\s\S]*\}/);
+  if (braceMatch) { try { return JSON.parse(braceMatch[0]); } catch (_) {} }
+  throw new Error('Could not parse Claude JSON');
+}
+
+// ─── Prospeo Helpers ──────────────────────────────────────────────────────────
+function titleToSeniority(title) {
+  const t = title.toLowerCase();
+  if (/\b(ceo|coo|cto|cfo|cpo|cmo|chief)\b/.test(t))    return 'C-Level';
+  if (/\b(founder|co-founder|owner)\b/.test(t))          return 'Founder/Owner';
+  if (/\b(vp|vice president)\b/.test(t))                 return 'VP';
+  if (/\b(director|head of)\b/.test(t))                  return 'Director';
+  if (/\bmanager\b/.test(t))                             return 'Manager';
+  return 'Director';
+}
+
+async function searchPerson(prospeoKey, companyName, jobTitle) {
+  const headers = { 'Content-Type': 'application/json', 'X-KEY': prospeoKey };
+
+  // Attempt 1: exact job title
+  try {
+    const res = await fetch(PROSPEO_SEARCH, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        page: 1,
+        filters: {
+          company: { names: { include: [companyName] } },
+          person_job_title: { include: [jobTitle] },
+        },
+      }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (!data.error && data.results?.length > 0) return data.results[0];
+    }
+  } catch (_) {}
+
+  // Attempt 2: seniority fallback
+  try {
+    const seniority = titleToSeniority(jobTitle);
+    const res = await fetch(PROSPEO_SEARCH, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        page: 1,
+        filters: {
+          company: { names: { include: [companyName] } },
+          person_seniority: { include: [seniority] },
+        },
+      }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (!data.error && data.results?.length > 0) return data.results[0];
+    }
+  } catch (_) {}
+
+  return null;
+}
+
+async function enrichPerson(prospeoKey, linkedinUrl) {
+  try {
+    const res = await fetch(PROSPEO_ENRICH, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-KEY': prospeoKey },
+      body: JSON.stringify({
+        data: { linkedin_url: linkedinUrl },
+        only_verified_email: true,
+      }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.error) return null;
+    return data;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function findContacts(prospeoKey, companyName, titles) {
+  const topTitles = titles.slice(0, 2);
+
+  // Search for a person for each title in parallel
+  const searchResults = await Promise.all(
+    topTitles.map(title => searchPerson(prospeoKey, companyName, title).catch(() => null))
+  );
+
+  // Deduplicate by LinkedIn URL before enriching
+  const seen = new Set();
+  const toEnrich = [];
+  for (const result of searchResults) {
+    if (!result) continue;
+    const linkedinUrl = result.person?.linkedin_url;
+    if (!linkedinUrl || seen.has(linkedinUrl)) continue;
+    seen.add(linkedinUrl);
+    toEnrich.push({ result, linkedinUrl });
+  }
+
+  // Enrich each unique person in parallel
+  const enriched = await Promise.all(
+    toEnrich.map(({ linkedinUrl }) => enrichPerson(prospeoKey, linkedinUrl).catch(() => null))
+  );
+
+  // Build final contacts array
+  const contacts = [];
+  for (const data of enriched) {
+    if (!data) continue;
+    const email = data.person?.email?.address;
+    if (!email) continue;
+    contacts.push({
+      name:     data.person?.full_name    || '',
+      title:    data.person?.job_title    || '',
+      email,
+      linkedin: data.person?.linkedin_url || '',
+    });
+  }
+
+  return contacts;
+}
+
 // ─── Handler ─────────────────────────────────────────────────────────────────
 module.exports = async function handler(req, res) {
-  // Only accept POST
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed.' });
   }
 
-  // Validate request body
   const { jobDesc, background, companyName, companySize } = req.body || {};
   if (!jobDesc || !background || !companyName || !companySize) {
     return res.status(400).json({ error: 'Missing required fields.' });
   }
 
-  // Check API key is configured
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey     = process.env.ANTHROPIC_API_KEY;
+  const prospeoKey = process.env.PROSPEO_API_KEY;
+
   if (!apiKey) {
     console.error('ANTHROPIC_API_KEY environment variable is not set.');
     return res.status(500).json({
@@ -253,15 +381,15 @@ module.exports = async function handler(req, res) {
     });
   }
 
-  // Call Claude
+  // ── Step 1: Call Claude ───────────────────────────────────────────────────
   let claudeRes;
   try {
     claudeRes = await fetch(ANTHROPIC_API, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'x-api-key':          apiKey,
-        'anthropic-version':  '2023-06-01',
+        'Content-Type':      'application/json',
+        'x-api-key':         apiKey,
+        'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
         model:      MODEL,
@@ -275,7 +403,6 @@ module.exports = async function handler(req, res) {
     return res.status(502).json({ error: 'Could not reach the Claude API. Try again in a moment.' });
   }
 
-  // Map Claude HTTP errors to friendly messages
   if (!claudeRes.ok) {
     let errBody = {};
     try { errBody = await claudeRes.json(); } catch (_) {}
@@ -293,7 +420,6 @@ module.exports = async function handler(req, res) {
       || errBody?.error?.message
       || `Unexpected error from Claude (${claudeRes.status}).`;
 
-    // Forward a safe HTTP status code to the client
     const clientStatus = claudeRes.status === 429 ? 429
       : claudeRes.status >= 500 ? 502
       : claudeRes.status;
@@ -302,7 +428,6 @@ module.exports = async function handler(req, res) {
     return res.status(clientStatus).json({ error: message });
   }
 
-  // Parse Claude response
   let claudeData;
   try {
     claudeData = await claudeRes.json();
@@ -311,10 +436,29 @@ module.exports = async function handler(req, res) {
     return res.status(502).json({ error: 'Received an unreadable response from Claude. Try again.' });
   }
 
-  const result = claudeData?.content?.[0]?.text;
-  if (!result) {
+  const rawResult = claudeData?.content?.[0]?.text;
+  if (!rawResult) {
     return res.status(502).json({ error: 'Empty response from Claude. Try again.' });
   }
 
-  return res.status(200).json({ result });
+  // ── Step 2: Run Prospeo searches using the titles Claude returned ─────────
+  let finalResult = rawResult;
+
+  if (prospeoKey) {
+    try {
+      const parsed   = parseClaudeJSON(rawResult);
+      const titles   = parsed?.decisionMakers?.titles || [];
+      const contacts = titles.length > 0
+        ? await findContacts(prospeoKey, companyName.trim(), titles)
+        : [];
+
+      parsed.foundContacts = contacts;
+      finalResult = JSON.stringify(parsed);
+    } catch (prospeoErr) {
+      // Non-fatal — return Claude output as-is, frontend handles missing foundContacts
+      console.error('Prospeo enrichment failed, returning kit without contacts:', prospeoErr.message);
+    }
+  }
+
+  return res.status(200).json({ result: finalResult });
 };
