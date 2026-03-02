@@ -480,16 +480,20 @@ module.exports = async function handler(req, res) {
     try {
       const parsed   = parseClaudeJSON(rawResult);
       const titles   = parsed?.decisionMakers?.titles || [];
+      console.log('[Prospeo] Key present. Titles to search:', titles);
       const contacts = titles.length > 0
         ? await findContacts(prospeoKey, companyName.trim(), titles)
         : [];
 
+      console.log('[Prospeo] Contacts found:', contacts.length, JSON.stringify(contacts));
       parsed.foundContacts = contacts;
       finalResult = JSON.stringify(parsed);
     } catch (prospeoErr) {
       // Non-fatal — return Claude output as-is, frontend handles missing foundContacts
-      console.error('Prospeo enrichment failed, returning kit without contacts:', prospeoErr.message);
+      console.error('[Prospeo] Enrichment failed, returning kit without contacts:', prospeoErr.message);
     }
+  } else {
+    console.warn('[Prospeo] PROSPEO_API_KEY not set — skipping contact search.');
   }
 
   return res.status(200).json({ result: finalResult });
