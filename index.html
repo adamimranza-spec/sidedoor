@@ -860,6 +860,12 @@
       padding: 3px 8px;
     }
 
+    .contact-no-email {
+      font-size: 0.72rem;
+      color: var(--muted);
+      font-style: italic;
+    }
+
     .contact-linkedin {
       font-size: 0.65rem;
       color: var(--muted);
@@ -1064,10 +1070,19 @@
       <div class="card-body" id="body-linkedin"></div>
     </div>
 
+    <!-- Found Contacts -->
+    <div class="output-card" id="card-contacts" style="display:none">
+      <div class="card-head">
+        <span class="card-num">03</span>
+        <span class="card-title">Real Contacts Found</span>
+      </div>
+      <div class="card-body" id="body-contacts"></div>
+    </div>
+
     <!-- Email Tools -->
     <div class="output-card">
       <div class="card-head">
-        <span class="card-num">03</span>
+        <span class="card-num">04</span>
         <span class="card-title">Email Finder Tools</span>
       </div>
       <div class="card-body" id="body-email-tools"></div>
@@ -1076,19 +1091,10 @@
     <!-- Email Sequence -->
     <div class="output-card">
       <div class="card-head">
-        <span class="card-num">04</span>
+        <span class="card-num">05</span>
         <span class="card-title">3-Email Cold Sequence</span>
       </div>
       <div class="card-body" id="body-emails"></div>
-    </div>
-
-    <!-- Found Contacts -->
-    <div class="output-card" id="card-contacts" style="display:none">
-      <div class="card-head">
-        <span class="card-num">05</span>
-        <span class="card-title">Decision-Maker Emails Found</span>
-      </div>
-      <div class="card-body" id="body-contacts"></div>
     </div>
 
   </div>
@@ -1395,7 +1401,7 @@ function renderFoundContacts(contacts) {
   card.style.display = '';
 
   if (!contacts || contacts.length === 0) {
-    body.innerHTML = `<p class="contacts-empty">No verified emails found automatically. Use Hunter.io or Apollo.io to search for the decision-maker titles above.</p>`;
+    body.innerHTML = `<p class="contacts-empty">No contacts found for this company. Search manually on LinkedIn using the titles above, then use Hunter.io or Apollo.io to find their email.</p>`;
     return;
   }
 
@@ -1406,11 +1412,12 @@ function renderFoundContacts(contacts) {
         <div class="contact-title">${esc(c.title)}</div>
       </div>
       <div class="contact-right">
+        ${c.email ? `
         <div class="contact-email-wrap">
           <span class="contact-email">${esc(c.email)}</span>
           <button class="copy-btn contact-copy-btn" data-email="${esc(c.email)}">Copy</button>
-        </div>
-        ${c.linkedin ? `<a class="contact-linkedin" href="${esc(c.linkedin)}" target="_blank" rel="noopener">LinkedIn</a>` : ''}
+        </div>` : `<span class="contact-no-email">No email found</span>`}
+        ${c.linkedin ? `<a class="contact-linkedin" href="${esc(c.linkedin)}" target="_blank" rel="noopener">LinkedIn &rarr;</a>` : ''}
       </div>
     </div>
   `).join('');
@@ -1546,8 +1553,48 @@ function downloadPDF() {
   addBodyText(`"${data.linkedInInstructions.connectionNote}"`, 8.5, ink);
   y += 4;
 
-  // ── Section 3: Email Tools ──
-  addSectionTitle('03', 'Email Finder Tools');
+  // ── Section 3: Real Contacts Found ──
+  const pdfContacts = data.foundContacts;
+  addSectionTitle('03', 'Real Contacts Found');
+  if (!pdfContacts || pdfContacts.length === 0) {
+    addBodyText('No contacts found for this company. Search manually on LinkedIn using the titles above, then use Hunter.io or Apollo.io to find their email.', 8.5, mid);
+  } else {
+    pdfContacts.forEach(c => {
+      checkPageBreak(18);
+      doc.setFontSize(9);
+      doc.setTextColor(...ink);
+      doc.setFont('helvetica', 'bold');
+      doc.text(c.name || '—', margin, y);
+      y += 5.5;
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(...mid);
+      doc.setFontSize(8.5);
+      doc.text(c.title || '', margin, y);
+      y += 5.5;
+      if (c.email) {
+        doc.setTextColor(...accentFg);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8.5);
+        doc.text(c.email, margin, y);
+      } else {
+        doc.setTextColor(...subtle);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.text('No email found — use Hunter.io or Apollo.io', margin, y);
+      }
+      if (c.linkedin) {
+        doc.setTextColor(...subtle);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.text(c.linkedin, pageW - margin, y, { align: 'right' });
+      }
+      y += 9;
+    });
+  }
+  y += 4;
+
+  // ── Section 4: Email Tools ──
+  addSectionTitle('04', 'Email Finder Tools');
   data.emailFinderTools.forEach(tool => {
     checkPageBreak(12);
     doc.setFontSize(9);
@@ -1565,8 +1612,8 @@ function downloadPDF() {
     y += 8;
   });
 
-  // ── Section 4: Email Sequence ──
-  addSectionTitle('04', '3-Email Cold Sequence');
+  // ── Section 5: Email Sequence ──
+  addSectionTitle('05', '3-Email Cold Sequence');
 
   const emails = [
     { label: 'EMAIL 1 \u2014 THE DIRECT APPLICATION', data: data.emailSequence.email1 },
@@ -1622,36 +1669,6 @@ function downloadPDF() {
     doc.text(line, margin + 5, y);
     y += 4.8;
   });
-
-  // ── Section 5: Found Contacts ──
-  const contacts = data.foundContacts;
-  if (contacts && contacts.length > 0) {
-    y += 4;
-    addSectionTitle('05', 'Decision-Maker Emails Found');
-    contacts.forEach(c => {
-      checkPageBreak(18);
-      doc.setFontSize(9);
-      doc.setTextColor(...ink);
-      doc.setFont('helvetica', 'bold');
-      doc.text(c.name || '—', margin, y);
-      y += 5.5;
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(...mid);
-      doc.setFontSize(8.5);
-      doc.text(c.title || '', margin, y);
-      y += 5.5;
-      doc.setTextColor(...accentFg);
-      doc.setFont('helvetica', 'bold');
-      doc.text(c.email || '', margin, y);
-      if (c.linkedin) {
-        doc.setTextColor(...subtle);
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(8);
-        doc.text(c.linkedin, pageW - margin, y, { align: 'right' });
-      }
-      y += 9;
-    });
-  }
 
   doc.save('sidedoor-outreach-kit.pdf');
   showToast('PDF downloaded');

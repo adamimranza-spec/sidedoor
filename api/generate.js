@@ -358,38 +358,37 @@ async function findContacts(prospeoKey, companyName, titles) {
 
   // Flatten all candidates, deduplicate by LinkedIn URL, cap at 5 to enrich
   const seen = new Set();
-  const toEnrich = [];
+  const candidates = []; // { linkedinUrl, name, title } from search results
   for (const results of searchResults) {
     for (const result of results) {
       const linkedinUrl = result?.person?.linkedin_url;
       if (!linkedinUrl || seen.has(linkedinUrl)) continue;
       seen.add(linkedinUrl);
-      toEnrich.push(linkedinUrl);
-      if (toEnrich.length >= 5) break;
+      candidates.push({
+        linkedinUrl,
+        name:  result?.person?.full_name || '',
+        title: result?.person?.job_title || '',
+      });
+      if (candidates.length >= 5) break;
     }
-    if (toEnrich.length >= 5) break;
+    if (candidates.length >= 5) break;
   }
 
-  // Enrich all candidates in parallel
+  // Enrich all candidates in parallel — email is a bonus, not a requirement
   const enriched = await Promise.all(
-    toEnrich.map(url => enrichPerson(prospeoKey, url).catch(() => null))
+    candidates.map(c => enrichPerson(prospeoKey, c.linkedinUrl).catch(() => null))
   );
 
-  // Build final contacts array — only keep those with a verified email
-  const contacts = [];
-  for (const data of enriched) {
-    if (!data) continue;
-    const email = data.person?.email?.address;
-    if (!email) continue;
-    contacts.push({
-      name:     data.person?.full_name    || '',
-      title:    data.person?.job_title    || '',
-      email,
-      linkedin: data.person?.linkedin_url || '',
-    });
-  }
-
-  return contacts;
+  // Build final contacts — include everyone with a LinkedIn URL, email optional
+  return candidates.map((c, i) => {
+    const d = enriched[i];
+    return {
+      name:     d?.person?.full_name    || c.name,
+      title:    d?.person?.job_title    || c.title,
+      email:    d?.person?.email?.address || null,
+      linkedin: d?.person?.linkedin_url  || c.linkedinUrl,
+    };
+  });
 }
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
