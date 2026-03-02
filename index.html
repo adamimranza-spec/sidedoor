@@ -875,6 +875,13 @@
       border-color: var(--accent);
     }
 
+    .contacts-empty {
+      font-size: 0.8rem;
+      color: var(--muted);
+      line-height: 1.6;
+      margin: 0;
+    }
+
     /* ─── Toast ───────────────────────────────────────────────────── */
     #toast {
       position: fixed;
@@ -1385,8 +1392,10 @@ function renderFoundContacts(contacts) {
   const card = document.getElementById('card-contacts');
   const body = document.getElementById('body-contacts');
 
+  card.style.display = '';
+
   if (!contacts || contacts.length === 0) {
-    card.style.display = 'none';
+    body.innerHTML = `<p class="contacts-empty">No verified emails found automatically. Use Hunter.io or Apollo.io to search for the decision-maker titles above.</p>`;
     return;
   }
 
@@ -1407,7 +1416,6 @@ function renderFoundContacts(contacts) {
   `).join('');
 
   body.innerHTML = `<div class="contacts-list">${rows}</div>`;
-  card.style.display = '';
 
   body.querySelectorAll('.contact-copy-btn').forEach(btn => {
     btn.addEventListener('click', () => copyToClipboard(btn.dataset.email, btn));
@@ -1614,6 +1622,36 @@ function downloadPDF() {
     doc.text(line, margin + 5, y);
     y += 4.8;
   });
+
+  // ── Section 5: Found Contacts ──
+  const contacts = data.foundContacts;
+  if (contacts && contacts.length > 0) {
+    y += 4;
+    addSectionTitle('05', 'Decision-Maker Emails Found');
+    contacts.forEach(c => {
+      checkPageBreak(18);
+      doc.setFontSize(9);
+      doc.setTextColor(...ink);
+      doc.setFont('helvetica', 'bold');
+      doc.text(c.name || '—', margin, y);
+      y += 5.5;
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(...mid);
+      doc.setFontSize(8.5);
+      doc.text(c.title || '', margin, y);
+      y += 5.5;
+      doc.setTextColor(...accentFg);
+      doc.setFont('helvetica', 'bold');
+      doc.text(c.email || '', margin, y);
+      if (c.linkedin) {
+        doc.setTextColor(...subtle);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.text(c.linkedin, pageW - margin, y, { align: 'right' });
+      }
+      y += 9;
+    });
+  }
 
   doc.save('sidedoor-outreach-kit.pdf');
   showToast('PDF downloaded');
