@@ -5,7 +5,7 @@
 const ANTHROPIC_API    = 'https://api.anthropic.com/v1/messages';
 const MODEL            = 'claude-sonnet-4-5';
 const APOLLO_ORG_SEARCH = 'https://api.apollo.io/v1/mixed_companies/search';
-const APOLLO_SEARCH    = 'https://api.apollo.io/v1/mixed_people/search';
+const APOLLO_SEARCH    = 'https://api.apollo.io/v1/mixed_people/api_search';
 const PROSPEO_ENRICH   = 'https://api.prospeo.io/enrich-person';
 
 // ─── System Prompt ───────────────────────────────────────────────────────────
