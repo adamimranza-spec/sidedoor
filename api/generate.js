@@ -364,7 +364,8 @@ async function findContacts(apolloKey, prospeoKey, companyName, titles) {
   return candidates.map((c, i) => {
     const d = enriched[i];
     const directLinkedin = d?.person?.linkedin_url || c.linkedinUrl || null;
-    const searchLinkedin = `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent((c.name + ' ' + companyName).trim())}`;
+    const searchLinkedin = `https://www.google.com/search?q=${encodeURIComponent(`site:linkedin.com/in "${c.name}" "${companyName}"`)}`;
+
     return {
       name:             d?.person?.full_name     || c.name,
       title:            d?.person?.job_title     || c.title,
