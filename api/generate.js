@@ -2,10 +2,11 @@
 // Vercel serverless function — calls Claude API, Apollo.io (search), and Prospeo (email enrichment) securely on the server.
 // Required env vars: ANTHROPIC_API_KEY, APOLLO_API_KEY, PROSPEO_API_KEY
 
-const ANTHROPIC_API  = 'https://api.anthropic.com/v1/messages';
-const MODEL          = 'claude-sonnet-4-5';
-const APOLLO_SEARCH  = 'https://api.apollo.io/v1/mixed_people/search';
-const PROSPEO_ENRICH = 'https://api.prospeo.io/enrich-person';
+const ANTHROPIC_API    = 'https://api.anthropic.com/v1/messages';
+const MODEL            = 'claude-sonnet-4-5';
+const APOLLO_ORG_SEARCH = 'https://api.apollo.io/v1/mixed_companies/search';
+const APOLLO_SEARCH    = 'https://api.apollo.io/v1/mixed_people/search';
+const PROSPEO_ENRICH   = 'https://api.prospeo.io/enrich-person';
 
 // ─── System Prompt ───────────────────────────────────────────────────────────
 // This lives server-side only. Never exposed to the browser.
@@ -244,10 +245,41 @@ function parseClaudeJSON(text) {
   throw new Error('Could not parse Claude JSON');
 }
 
-// ─── Apollo Search ────────────────────────────────────────────────────────────
+// ─── Apollo Helpers ───────────────────────────────────────────────────────────
+
+// Resolves a company name to its primary domain via Apollo's org search.
+// Returns a domain string (e.g. "stripe.com") or null if not found.
+async function lookupCompanyDomain(apolloKey, companyName) {
+  try {
+    const res = await fetch(APOLLO_ORG_SEARCH, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache',
+        'x-api-key': apolloKey,
+      },
+      body: JSON.stringify({ q_organization_name: companyName, page: 1, per_page: 1 }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const domain = data?.organizations?.[0]?.primary_domain || null;
+    console.log('[Apollo] Domain lookup for', companyName, '->', domain);
+    return domain;
+  } catch (_) {
+    return null;
+  }
+}
+
 // Searches Apollo for people matching the given titles at the given company.
+// Prefers domain-based matching (more precise); falls back to name-based.
 // Returns an array of candidate objects with { linkedinUrl, name, title, email }.
 async function searchApollo(apolloKey, companyName, titles) {
+  const domain = await lookupCompanyDomain(apolloKey, companyName);
+
+  const companyFilter = domain
+    ? { organization_domains: [domain] }
+    : { organization_names: [companyName] };
+
   try {
     const res = await fetch(APOLLO_SEARCH, {
       method: 'POST',
@@ -258,7 +290,7 @@ async function searchApollo(apolloKey, companyName, titles) {
       },
       body: JSON.stringify({
         person_titles: titles,
-        organization_names: [companyName],
+        ...companyFilter,
         page: 1,
         per_page: 10,
       }),
