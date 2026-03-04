@@ -358,14 +358,19 @@ async function findContacts(apolloKey, prospeoKey, companyName, titles) {
     candidates.map(c => c.linkedinUrl ? enrichPerson(prospeoKey, c.linkedinUrl).catch(() => null) : null)
   );
 
-  // Step 3: Assemble final contacts — Prospeo data wins, Apollo email as fallback
+  // Step 3: Assemble final contacts — Prospeo data wins, Apollo email as fallback.
+  // If no direct LinkedIn profile URL is available, generate a pre-filtered search URL
+  // so users still get a one-click path to find the person.
   return candidates.map((c, i) => {
     const d = enriched[i];
+    const directLinkedin = d?.person?.linkedin_url || c.linkedinUrl || null;
+    const searchLinkedin = `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent((c.name + ' ' + companyName).trim())}`;
     return {
-      name:     d?.person?.full_name     || c.name,
-      title:    d?.person?.job_title     || c.title,
-      email:    d?.person?.email?.address || c.email || null,
-      linkedin: d?.person?.linkedin_url   || c.linkedinUrl,
+      name:             d?.person?.full_name     || c.name,
+      title:            d?.person?.job_title     || c.title,
+      email:            d?.person?.email?.address || c.email || null,
+      linkedin:         directLinkedin || searchLinkedin,
+      linkedinIsSearch: !directLinkedin,
     };
   });
 }
