@@ -270,13 +270,36 @@ async function lookupCompanyDomain(apolloKey, companyName) {
   }
 }
 
-// Searches Prospeo for people matching the given titles at the given company.
+// Maps a job title string to Prospeo's seniority enum values.
+function titlesToSeniorities(titles) {
+  const seniorities = new Set();
+  for (const title of titles) {
+    const t = title.toLowerCase();
+    if (/\b(ceo|coo|cto|cfo|cpo|cmo|chief)\b/.test(t))  seniorities.add('C-Level');
+    if (/\b(founder|co-founder|owner)\b/.test(t))        seniorities.add('Founder/Owner');
+    if (/\b(vp|vice president)\b/.test(t))               seniorities.add('VP');
+    if (/\b(director|head of)\b/.test(t))                { seniorities.add('Director'); seniorities.add('VP'); }
+    if (/\bmanager\b/.test(t))                           seniorities.add('Manager');
+  }
+  // Default to senior decision-maker tiers if nothing matched
+  if (seniorities.size === 0) {
+    seniorities.add('C-Level');
+    seniorities.add('VP');
+    seniorities.add('Director');
+  }
+  return [...seniorities];
+}
+
+// Searches Prospeo for people at the given company matching the seniority levels
+// derived from the Claude-generated titles.
 // Uses domain filter when available (exact match); falls back to company name.
 // Returns an array of candidate objects with { personId, name, title, linkedinUrl }.
 async function searchProspeo(prospeoKey, domain, companyName, titles) {
-  const companyFilter = domain
+  const companyFilter  = domain
     ? { websites: { include: [domain] } }
     : { names:    { include: [companyName] } };
+  const seniorities = titlesToSeniorities(titles);
+  console.log('[Prospeo] Searching with seniorities:', seniorities, '| domain:', domain || companyName);
 
   try {
     const res = await fetch(PROSPEO_SEARCH, {
@@ -286,7 +309,7 @@ async function searchProspeo(prospeoKey, domain, companyName, titles) {
         page: 1,
         filters: {
           company:          companyFilter,
-          person_job_title: { include: titles },
+          person_seniority: { include: seniorities },
         },
       }),
     });
@@ -300,11 +323,11 @@ async function searchProspeo(prospeoKey, domain, companyName, titles) {
     if (data.error || !data.results?.length) return [];
 
     return data.results.map(r => ({
-      personId:   r.person?.id   || null,
-      name:       r.person?.full_name
-                  || [r.person?.first_name, r.person?.last_name].filter(Boolean).join(' ')
-                  || '',
-      title:      r.person?.job_title || '',
+      personId:    r.person?.id || null,
+      name:        r.person?.full_name
+                   || [r.person?.first_name, r.person?.last_name].filter(Boolean).join(' ')
+                   || '',
+      title:       r.person?.job_title || '',
       linkedinUrl: r.person?.linkedin_url || null,
     })).filter(p => p.name);
   } catch (err) {
