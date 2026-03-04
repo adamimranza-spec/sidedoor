@@ -270,6 +270,22 @@ async function lookupCompanyDomain(apolloKey, companyName) {
   }
 }
 
+// Scores a person's job title for relevance against the target titles.
+// Extracts functional keywords (e.g. "marketing", "sales", "engineering")
+// and counts how many appear in the person's actual title.
+function titleRelevanceScore(personTitle, targetTitles) {
+  const pt = personTitle.toLowerCase();
+  const skipWords = new Set([
+    'of', 'the', 'and', 'or', 'a', 'an', 'at',
+    'vp', 'vice', 'president', 'head', 'director', 'manager',
+    'chief', 'officer', 'senior', 'lead', 'principal', 'global',
+  ]);
+  const keywords = targetTitles
+    .flatMap(t => t.toLowerCase().split(/[\s,/&\-()]+/))
+    .filter(w => w.length > 2 && !skipWords.has(w));
+  return keywords.filter(kw => pt.includes(kw)).length;
+}
+
 // Maps a job title string to Prospeo's seniority enum values.
 function titlesToSeniorities(titles) {
   const seniorities = new Set();
@@ -362,9 +378,15 @@ async function findContacts(apolloKey, prospeoKey, companyName, titles) {
   // Step 1: Resolve company domain via Apollo for precise Prospeo filtering
   const domain = await lookupCompanyDomain(apolloKey, companyName);
 
-  // Step 2: Prospeo search — domain-exact company filter + job title match
+  // Step 2: Prospeo search — domain-exact company filter + seniority match
   const rawCandidates = await searchProspeo(prospeoKey, domain, companyName, titles);
   console.log('[Prospeo] Search candidates:', rawCandidates.length);
+
+  // Sort by functional relevance to the target titles (e.g. VP Marketing ranks above VP Engineering
+  // when searching for a marketing role) before deduplication
+  rawCandidates.sort((a, b) =>
+    titleRelevanceScore(b.title, titles) - titleRelevanceScore(a.title, titles)
+  );
 
   // Deduplicate by LinkedIn URL or name, cap at 5
   const seen = new Set();
