@@ -1,12 +1,12 @@
 // api/generate.js
-// Vercel serverless function — calls Claude API, Apollo.io (search), and Prospeo (email enrichment) securely on the server.
+// Vercel serverless function — calls Claude API, Apollo.io (domain lookup only), and Prospeo (people search + email enrichment).
 // Required env vars: ANTHROPIC_API_KEY, APOLLO_API_KEY, PROSPEO_API_KEY
 
-const ANTHROPIC_API    = 'https://api.anthropic.com/v1/messages';
-const MODEL            = 'claude-sonnet-4-5';
+const ANTHROPIC_API     = 'https://api.anthropic.com/v1/messages';
+const MODEL             = 'claude-sonnet-4-5';
 const APOLLO_ORG_SEARCH = 'https://api.apollo.io/v1/mixed_companies/search';
-const APOLLO_SEARCH    = 'https://api.apollo.io/v1/mixed_people/api_search';
-const PROSPEO_ENRICH   = 'https://api.prospeo.io/enrich-person';
+const PROSPEO_SEARCH    = 'https://api.prospeo.io/search-person';
+const PROSPEO_ENRICH    = 'https://api.prospeo.io/enrich-person';
 
 // ─── System Prompt ───────────────────────────────────────────────────────────
 // This lives server-side only. Never exposed to the browser.
@@ -270,61 +270,59 @@ async function lookupCompanyDomain(apolloKey, companyName) {
   }
 }
 
-// Searches Apollo for people matching the given titles at the given company.
-// Prefers domain-based matching (more precise); falls back to name-based.
-// Returns an array of candidate objects with { linkedinUrl, name, title, email }.
-async function searchApollo(apolloKey, companyName, titles) {
-  const domain = await lookupCompanyDomain(apolloKey, companyName);
-
+// Searches Prospeo for people matching the given titles at the given company.
+// Uses domain filter when available (exact match); falls back to company name.
+// Returns an array of candidate objects with { personId, name, title, linkedinUrl }.
+async function searchProspeo(prospeoKey, domain, companyName, titles) {
   const companyFilter = domain
-    ? { organization_domains: [domain] }
-    : { organization_names: [companyName] };
+    ? { websites: { include: [domain] } }
+    : { names:    { include: [companyName] } };
 
   try {
-    const res = await fetch(APOLLO_SEARCH, {
+    const res = await fetch(PROSPEO_SEARCH, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-cache',
-        'x-api-key': apolloKey,
-      },
+      headers: { 'Content-Type': 'application/json', 'X-KEY': prospeoKey },
       body: JSON.stringify({
-        person_titles: titles,
-        ...companyFilter,
         page: 1,
-        per_page: 10,
+        filters: {
+          company:          companyFilter,
+          person_job_title: { include: titles },
+        },
       }),
     });
 
     if (!res.ok) {
-      console.error('[Apollo] Search failed:', res.status, await res.text().catch(() => ''));
+      console.error('[Prospeo] Search failed:', res.status, await res.text().catch(() => ''));
       return [];
     }
 
     const data = await res.json();
-    if (!data.people || data.people.length === 0) return [];
+    if (data.error || !data.results?.length) return [];
 
-    return data.people.map(p => ({
-      linkedinUrl: p.linkedin_url || null,
-      name:        [p.first_name, p.last_name].filter(Boolean).join(' '),
-      title:       p.title || '',
-      email:       p.email || null,
-    })).filter(p => p.linkedinUrl || p.name);
+    return data.results.map(r => ({
+      personId:   r.person?.id   || null,
+      name:       r.person?.full_name
+                  || [r.person?.first_name, r.person?.last_name].filter(Boolean).join(' ')
+                  || '',
+      title:      r.person?.job_title || '',
+      linkedinUrl: r.person?.linkedin_url || null,
+    })).filter(p => p.name);
   } catch (err) {
-    console.error('[Apollo] Search error:', err.message);
+    console.error('[Prospeo] Search error:', err.message);
     return [];
   }
 }
 
 // ─── Prospeo Email Enrichment ─────────────────────────────────────────────────
 
-async function enrichPerson(prospeoKey, linkedinUrl) {
+// Enriches a contact using their Prospeo person_id to get verified email.
+async function enrichPerson(prospeoKey, personId) {
   try {
     const res = await fetch(PROSPEO_ENRICH, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-KEY': prospeoKey },
       body: JSON.stringify({
-        data: { linkedin_url: linkedinUrl },
+        data: { person_id: personId },
         only_verified_email: true,
       }),
     });
@@ -338,11 +336,14 @@ async function enrichPerson(prospeoKey, linkedinUrl) {
 }
 
 async function findContacts(apolloKey, prospeoKey, companyName, titles) {
-  // Step 1: Apollo search — reliable company + title matching
-  const rawCandidates = await searchApollo(apolloKey, companyName, titles);
-  console.log('[Apollo] Raw candidates:', rawCandidates.length);
+  // Step 1: Resolve company domain via Apollo for precise Prospeo filtering
+  const domain = await lookupCompanyDomain(apolloKey, companyName);
 
-  // Deduplicate by LinkedIn URL (or name as fallback), cap at 5
+  // Step 2: Prospeo search — domain-exact company filter + job title match
+  const rawCandidates = await searchProspeo(prospeoKey, domain, companyName, titles);
+  console.log('[Prospeo] Search candidates:', rawCandidates.length);
+
+  // Deduplicate by LinkedIn URL or name, cap at 5
   const seen = new Set();
   const candidates = [];
   for (const c of rawCandidates) {
@@ -353,23 +354,21 @@ async function findContacts(apolloKey, prospeoKey, companyName, titles) {
     if (candidates.length >= 5) break;
   }
 
-  // Step 2: Prospeo enrich for verified emails — only for contacts with LinkedIn URLs
+  // Step 3: Enrich for verified emails using person_id
   const enriched = await Promise.all(
-    candidates.map(c => c.linkedinUrl ? enrichPerson(prospeoKey, c.linkedinUrl).catch(() => null) : null)
+    candidates.map(c => c.personId ? enrichPerson(prospeoKey, c.personId).catch(() => null) : null)
   );
 
-  // Step 3: Assemble final contacts — Prospeo data wins, Apollo email as fallback.
-  // If no direct LinkedIn profile URL is available, generate a pre-filtered search URL
-  // so users still get a one-click path to find the person.
+  // Step 4: Assemble contacts — fall back to Google search link if no direct LinkedIn URL
   return candidates.map((c, i) => {
     const d = enriched[i];
     const directLinkedin = d?.person?.linkedin_url || c.linkedinUrl || null;
     const searchLinkedin = `https://www.google.com/search?q=${encodeURIComponent(`site:linkedin.com/in "${c.name}" "${companyName}"`)}`;
 
     return {
-      name:             d?.person?.full_name     || c.name,
-      title:            d?.person?.job_title     || c.title,
-      email:            d?.person?.email?.address || c.email || null,
+      name:             d?.person?.full_name        || c.name,
+      title:            d?.person?.job_title        || c.title,
+      email:            d?.person?.email?.address   || null,
       linkedin:         directLinkedin || searchLinkedin,
       linkedinIsSearch: !directLinkedin,
     };
@@ -458,27 +457,26 @@ module.exports = async function handler(req, res) {
     return res.status(502).json({ error: 'Empty response from Claude. Try again.' });
   }
 
-  // ── Step 2: Search Apollo for real contacts, enrich emails via Prospeo ───
+  // ── Step 2: Find contacts via Prospeo (domain lookup via Apollo + people search + email enrichment)
   let finalResult = rawResult;
 
-  if (apolloKey) {
+  if (prospeoKey) {
     try {
       const parsed   = parseClaudeJSON(rawResult);
       const titles   = parsed?.decisionMakers?.titles || [];
-      console.log('[Apollo] Key present. Titles to search:', titles);
+      console.log('[Contacts] Titles to search:', titles);
       const contacts = titles.length > 0
         ? await findContacts(apolloKey, prospeoKey, companyName.trim(), titles)
         : [];
 
-      console.log('[Apollo] Contacts found:', contacts.length, JSON.stringify(contacts));
+      console.log('[Contacts] Found:', contacts.length, JSON.stringify(contacts));
       parsed.foundContacts = contacts;
       finalResult = JSON.stringify(parsed);
     } catch (contactErr) {
-      // Non-fatal — return Claude output as-is, frontend handles missing foundContacts
-      console.error('[Apollo] Contact search failed, returning kit without contacts:', contactErr.message);
+      console.error('[Contacts] Failed, returning kit without contacts:', contactErr.message);
     }
   } else {
-    console.warn('[Apollo] APOLLO_API_KEY not set — skipping contact search.');
+    console.warn('[Contacts] PROSPEO_API_KEY not set — skipping contact search.');
   }
 
   return res.status(200).json({ result: finalResult });
