@@ -1,12 +1,11 @@
 // api/generate.js
-// Vercel serverless function — calls Claude API, Apollo.io (domain lookup only), and Prospeo (people search + email enrichment).
-// Required env vars: ANTHROPIC_API_KEY, APOLLO_API_KEY, PROSPEO_API_KEY
+// Vercel serverless function — calls Claude API, Tavily (LinkedIn profile search), and Prospeo (email enrichment).
+// Required env vars: ANTHROPIC_API_KEY, TAVILY_API_KEY, PROSPEO_API_KEY
 
-const ANTHROPIC_API     = 'https://api.anthropic.com/v1/messages';
-const MODEL             = 'claude-sonnet-4-5';
-const APOLLO_ORG_SEARCH = 'https://api.apollo.io/v1/mixed_companies/search';
-const PROSPEO_SEARCH    = 'https://api.prospeo.io/search-person';
-const PROSPEO_ENRICH    = 'https://api.prospeo.io/enrich-person';
+const ANTHROPIC_API  = 'https://api.anthropic.com/v1/messages';
+const MODEL          = 'claude-sonnet-4-5';
+const TAVILY_SEARCH  = 'https://api.tavily.com/search';
+const PROSPEO_ENRICH = 'https://api.prospeo.io/enrich-person';
 
 // ─── System Prompt ───────────────────────────────────────────────────────────
 // This lives server-side only. Never exposed to the browser.
@@ -245,123 +244,71 @@ function parseClaudeJSON(text) {
   throw new Error('Could not parse Claude JSON');
 }
 
-// ─── Apollo Helpers ───────────────────────────────────────────────────────────
+// ─── Tavily Search ────────────────────────────────────────────────────────────
 
-// Resolves a company name to its primary domain via Apollo's org search.
-// Returns a domain string (e.g. "stripe.com") or null if not found.
-async function lookupCompanyDomain(apolloKey, companyName) {
-  try {
-    const res = await fetch(APOLLO_ORG_SEARCH, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-cache',
-        'x-api-key': apolloKey,
-      },
-      body: JSON.stringify({ q_organization_name: companyName, page: 1, per_page: 1 }),
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    const domain = data?.organizations?.[0]?.primary_domain || null;
-    console.log('[Apollo] Domain lookup for', companyName, '->', domain);
-    return domain;
-  } catch (_) {
-    return null;
-  }
+// Extracts a clean LinkedIn profile URL from a Tavily result URL.
+function extractLinkedInUrl(url) {
+  const match = url?.match(/https?:\/\/(?:www\.)?linkedin\.com\/in\/[^/?#]+/);
+  return match ? match[0] : null;
 }
 
-// Scores a person's job title for relevance against the target titles.
-// Extracts functional keywords (e.g. "marketing", "sales", "engineering")
-// and counts how many appear in the person's actual title.
-function titleRelevanceScore(personTitle, targetTitles) {
-  const pt = personTitle.toLowerCase();
-  const skipWords = new Set([
-    'of', 'the', 'and', 'or', 'a', 'an', 'at',
-    'vp', 'vice', 'president', 'head', 'director', 'manager',
-    'chief', 'officer', 'senior', 'lead', 'principal', 'global',
-  ]);
-  const keywords = targetTitles
-    .flatMap(t => t.toLowerCase().split(/[\s,/&\-()]+/))
-    .filter(w => w.length > 2 && !skipWords.has(w));
-  return keywords.filter(kw => pt.includes(kw)).length;
+// Extracts a person's name from a LinkedIn page title returned by Tavily.
+// Typical formats: "John Smith - VP Marketing at Acme | LinkedIn"
+//                  "Jane Doe | Director of Sales - Acme"
+function extractNameFromTitle(title) {
+  if (!title) return null;
+  const clean = title.replace(/\s*\|\s*LinkedIn\s*$/i, '').trim();
+  const name = clean.split(/\s+[-–|]\s+/)[0].trim();
+  // Sanity check: looks like a real name (2-5 words, letters only)
+  if (name && /^[A-Za-z\s'.,-]{2,50}$/.test(name) && name.split(' ').length <= 5) return name;
+  return null;
 }
 
-// Maps a job title string to Prospeo's seniority enum values.
-function titlesToSeniorities(titles) {
-  const seniorities = new Set();
-  for (const title of titles) {
-    const t = title.toLowerCase();
-    if (/\b(ceo|coo|cto|cfo|cpo|cmo|chief)\b/.test(t))  seniorities.add('C-Level');
-    if (/\b(founder|co-founder|owner)\b/.test(t))        seniorities.add('Founder/Owner');
-    if (/\b(vp|vice president)\b/.test(t))               seniorities.add('VP');
-    if (/\b(director|head of)\b/.test(t))                { seniorities.add('Director'); seniorities.add('VP'); }
-    if (/\bmanager\b/.test(t))                           seniorities.add('Manager');
-  }
-  // Default to senior decision-maker tiers if nothing matched
-  if (seniorities.size === 0) {
-    seniorities.add('C-Level');
-    seniorities.add('VP');
-    seniorities.add('Director');
-  }
-  return [...seniorities];
-}
-
-// Searches Prospeo for people at the given company matching the seniority levels
-// derived from the Claude-generated titles.
-// Uses domain filter when available (exact match); falls back to company name.
-// Returns an array of candidate objects with { personId, name, title, linkedinUrl }.
-async function searchProspeo(prospeoKey, domain, companyName, titles) {
-  const companyFilter  = domain
-    ? { websites: { include: [domain] } }
-    : { names:    { include: [companyName] } };
-  const seniorities = titlesToSeniorities(titles);
-  console.log('[Prospeo] Searching with seniorities:', seniorities, '| domain:', domain || companyName);
-
-  try {
-    const res = await fetch(PROSPEO_SEARCH, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-KEY': prospeoKey },
-      body: JSON.stringify({
-        page: 1,
-        filters: {
-          company:          companyFilter,
-          person_seniority: { include: seniorities },
-        },
-      }),
-    });
-
-    if (!res.ok) {
-      console.error('[Prospeo] Search failed:', res.status, await res.text().catch(() => ''));
-      return [];
-    }
-
-    const data = await res.json();
-    if (data.error || !data.results?.length) return [];
-
-    return data.results.map(r => ({
-      personId:    r.person?.id || null,
-      name:        r.person?.full_name
-                   || [r.person?.first_name, r.person?.last_name].filter(Boolean).join(' ')
-                   || '',
-      title:       r.person?.job_title || '',
-      linkedinUrl: r.person?.linkedin_url || null,
-    })).filter(p => p.name);
-  } catch (err) {
-    console.error('[Prospeo] Search error:', err.message);
-    return [];
-  }
+// Searches Tavily for LinkedIn profiles matching each target title at the company.
+// Runs one search per title in parallel. Returns { linkedinUrl, name, title }[].
+async function searchTavily(tavilyKey, companyName, titles) {
+  const searches = await Promise.all(
+    titles.map(async title => {
+      try {
+        const res = await fetch(TAVILY_SEARCH, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tavilyKey}` },
+          body: JSON.stringify({
+            query:          `site:linkedin.com/in "${title}" "${companyName}"`,
+            search_depth:   'basic',
+            max_results:    5,
+            include_domains: ['linkedin.com'],
+          }),
+        });
+        if (!res.ok) {
+          console.error('[Tavily] Search failed:', res.status, await res.text().catch(() => ''));
+          return [];
+        }
+        const data = await res.json();
+        return (data.results || []).map(r => ({
+          linkedinUrl: extractLinkedInUrl(r.url),
+          name:        extractNameFromTitle(r.title),
+          title,
+        })).filter(p => p.linkedinUrl);
+      } catch (err) {
+        console.error('[Tavily] Search error for title', title, ':', err.message);
+        return [];
+      }
+    })
+  );
+  return searches.flat();
 }
 
 // ─── Prospeo Email Enrichment ─────────────────────────────────────────────────
 
-// Enriches a contact using their Prospeo person_id to get verified email.
-async function enrichPerson(prospeoKey, personId) {
+// Enriches a contact using their LinkedIn URL to get verified email + full profile.
+async function enrichPerson(prospeoKey, linkedinUrl) {
   try {
     const res = await fetch(PROSPEO_ENRICH, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-KEY': prospeoKey },
       body: JSON.stringify({
-        data: { person_id: personId },
+        data: { linkedin_url: linkedinUrl },
         only_verified_email: true,
       }),
     });
@@ -374,50 +321,37 @@ async function enrichPerson(prospeoKey, personId) {
   }
 }
 
-async function findContacts(apolloKey, prospeoKey, companyName, titles) {
-  // Step 1: Resolve company domain via Apollo for precise Prospeo filtering
-  const domain = await lookupCompanyDomain(apolloKey, companyName);
+async function findContacts(tavilyKey, prospeoKey, companyName, titles) {
+  // Step 1: Tavily finds LinkedIn profile URLs for each target title
+  const rawCandidates = await searchTavily(tavilyKey, companyName, titles);
+  console.log('[Tavily] Raw candidates:', rawCandidates.length);
 
-  // Step 2: Prospeo search — domain-exact company filter + seniority match
-  const rawCandidates = await searchProspeo(prospeoKey, domain, companyName, titles);
-  console.log('[Prospeo] Search candidates:', rawCandidates.length);
-
-  // Sort by functional relevance to the target titles (e.g. VP Marketing ranks above VP Engineering
-  // when searching for a marketing role) before deduplication
-  rawCandidates.sort((a, b) =>
-    titleRelevanceScore(b.title, titles) - titleRelevanceScore(a.title, titles)
-  );
-
-  // Deduplicate by LinkedIn URL or name, cap at 5
+  // Deduplicate by LinkedIn URL, cap at 5
   const seen = new Set();
   const candidates = [];
   for (const c of rawCandidates) {
-    const key = c.linkedinUrl || c.name;
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
+    if (!c.linkedinUrl || seen.has(c.linkedinUrl)) continue;
+    seen.add(c.linkedinUrl);
     candidates.push(c);
     if (candidates.length >= 5) break;
   }
 
-  // Step 3: Enrich for verified emails using person_id
+  // Step 2: Prospeo enriches each profile via LinkedIn URL — full name, title, verified email
   const enriched = await Promise.all(
-    candidates.map(c => c.personId ? enrichPerson(prospeoKey, c.personId).catch(() => null) : null)
+    candidates.map(c => enrichPerson(prospeoKey, c.linkedinUrl).catch(() => null))
   );
 
-  // Step 4: Assemble contacts — fall back to Google search link if no direct LinkedIn URL
+  // Step 3: Assemble contacts — Prospeo data wins, Tavily name/title as fallback
   return candidates.map((c, i) => {
     const d = enriched[i];
-    const directLinkedin = d?.person?.linkedin_url || c.linkedinUrl || null;
-    const searchLinkedin = `https://www.google.com/search?q=${encodeURIComponent(`site:linkedin.com/in "${c.name}" "${companyName}"`)}`;
-
     return {
-      name:             d?.person?.full_name        || c.name,
-      title:            d?.person?.job_title        || c.title,
-      email:            d?.person?.email?.address   || null,
-      linkedin:         directLinkedin || searchLinkedin,
-      linkedinIsSearch: !directLinkedin,
+      name:             d?.person?.full_name      || c.name || '',
+      title:            d?.person?.job_title      || c.title,
+      email:            d?.person?.email?.address || null,
+      linkedin:         d?.person?.linkedin_url   || c.linkedinUrl,
+      linkedinIsSearch: false,
     };
-  });
+  }).filter(c => c.name);
 }
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
@@ -432,7 +366,7 @@ module.exports = async function handler(req, res) {
   }
 
   const apiKey     = process.env.ANTHROPIC_API_KEY;
-  const apolloKey  = process.env.APOLLO_API_KEY;
+  const tavilyKey  = process.env.TAVILY_API_KEY;
   const prospeoKey = process.env.PROSPEO_API_KEY;
 
   if (!apiKey) {
@@ -502,16 +436,16 @@ module.exports = async function handler(req, res) {
     return res.status(502).json({ error: 'Empty response from Claude. Try again.' });
   }
 
-  // ── Step 2: Find contacts via Prospeo (domain lookup via Apollo + people search + email enrichment)
+  // ── Step 2: Find contacts — Tavily finds LinkedIn profiles, Prospeo enriches emails
   let finalResult = rawResult;
 
-  if (prospeoKey) {
+  if (tavilyKey && prospeoKey) {
     try {
       const parsed   = parseClaudeJSON(rawResult);
       const titles   = parsed?.decisionMakers?.titles || [];
       console.log('[Contacts] Titles to search:', titles);
       const contacts = titles.length > 0
-        ? await findContacts(apolloKey, prospeoKey, companyName.trim(), titles)
+        ? await findContacts(tavilyKey, prospeoKey, companyName.trim(), titles)
         : [];
 
       console.log('[Contacts] Found:', contacts.length, JSON.stringify(contacts));
@@ -521,7 +455,7 @@ module.exports = async function handler(req, res) {
       console.error('[Contacts] Failed, returning kit without contacts:', contactErr.message);
     }
   } else {
-    console.warn('[Contacts] PROSPEO_API_KEY not set — skipping contact search.');
+    console.warn('[Contacts] TAVILY_API_KEY or PROSPEO_API_KEY not set — skipping contact search.');
   }
 
   return res.status(200).json({ result: finalResult });
