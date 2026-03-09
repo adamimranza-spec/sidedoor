@@ -1676,23 +1676,32 @@ function downloadPDF() {
 
 // ─── Copy & Toast ─────────────────────────────────────────────────
 async function copyToClipboard(text, btn) {
-  try {
-    await navigator.clipboard.writeText(text);
-  } catch (_) {
+  let success = false;
+
+  if (navigator.clipboard && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(text);
+      success = true;
+    } catch (_) {}
+  }
+
+  if (!success) {
     const ta = document.createElement('textarea');
     ta.value = text;
-    ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0;';
+    ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0;width:2em;height:2em;padding:0;border:none;outline:none;';
     document.body.appendChild(ta);
-    ta.select();
-    document.execCommand('copy');
+    ta.focus();
+    ta.setSelectionRange(0, ta.value.length); // required on iOS/Android — ta.select() is unreliable
+    try { success = document.execCommand('copy'); } catch (_) {}
     document.body.removeChild(ta);
   }
+
   if (btn) {
     btn.textContent = 'Copied!';
     btn.classList.add('copied');
     setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2200);
   }
-  showToast('Copied to clipboard');
+  showToast(success ? 'Copied to clipboard' : 'Copy failed — select text manually');
 }
 
 let toastTimer;
