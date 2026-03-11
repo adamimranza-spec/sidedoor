@@ -134,6 +134,35 @@ EMAIL 3 STRICT RULES:
 
 ---
 
+COVER LETTER — RULES AND STRUCTURE:
+
+The cover letter is NOT a formal HR document. It is a direct, specific letter written to a real person — the decision-maker.
+
+COVER LETTER RULES:
+- Under 250 words total
+- Exactly 4 short paragraphs
+- Same banned phrases as the emails — NONE of them appear here
+- No bullet points or lists — plain paragraphs only
+- No "Dear Hiring Manager" — start the letter directly with Paragraph 1
+- No em dashes (—) — use a period and start a new sentence instead
+- Same 5th-grade reading level as the emails
+- Every sentence must earn its place — no filler, no padding
+
+COVER LETTER STRUCTURE:
+Paragraph 1 (2-3 sentences): What caught your attention about THIS role or company specifically. Reference something concrete from the job posting — the stage they are at, the challenge they are solving, the team they are building. Never write something that could apply to any company.
+
+Paragraph 2 (2-3 sentences): Your most relevant experience, tied directly to their specific need. Pick ONE thread and go deep on it. Do not list multiple skills — focus on the single most valuable thing you bring for this role.
+
+Paragraph 3 (2-3 sentences): Proof. One specific result, number, or concrete example from the candidate's background that directly supports what you said in Paragraph 2. Make it tangible — a number, a timeframe, a specific outcome.
+
+Paragraph 4 (1-2 sentences): Low-pressure close. Invite a conversation. Confident, not desperate. Never beg.
+
+End with:
+Thanks,
+[Candidate's first name, extracted from their background. If no name is found, use "[Your Name]"]
+
+---
+
 OVERALL TONE — NON-NEGOTIABLE:
 Write like someone sending a message from their phone, not composing a document.
 - Short sentences. Simple words. One idea per paragraph.
@@ -208,6 +237,9 @@ Return ONLY this JSON structure. Nothing else. No text before or after. No markd
       "day": "Day 6"
     },
     "cadenceNote": "Send Email 1 today. Send Email 2 on Day 3. Send Email 3 on Day 6. Do not send on weekends — emails get buried. Best send times: Tuesday through Thursday, 8–10am in their timezone. If they reply at any point, stop the sequence and reply directly. If they say no, stop and thank them."
+  },
+  "coverLetter": {
+    "body": "Full cover letter body. 4 paragraphs separated by \\n\\n. No bullet points. No salutation line. Under 250 words. Ends with: Thanks,\\n[Candidate first name or [Your Name]]"
   }
 }`;
 

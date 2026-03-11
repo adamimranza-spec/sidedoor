@@ -1097,6 +1097,15 @@
       <div class="card-body" id="body-emails"></div>
     </div>
 
+    <!-- Cover Letter -->
+    <div class="output-card">
+      <div class="card-head">
+        <span class="card-num">06</span>
+        <span class="card-title">Cover Letter</span>
+      </div>
+      <div class="card-body" id="body-cover-letter"></div>
+    </div>
+
   </div>
 
   <footer class="site-footer">
@@ -1394,6 +1403,26 @@ function renderEmailSequence(seq) {
   });
 }
 
+function renderCoverLetter(cl) {
+  if (!cl?.body) return;
+  const body = document.getElementById('body-cover-letter');
+  if (!body) return;
+
+  body.innerHTML = `
+    <div class="email-card">
+      <div class="email-top">
+        <span class="email-day-tag">Ready to send</span>
+        <button class="copy-btn" id="copy-cover-letter">Copy</button>
+      </div>
+      <div class="email-body">${esc(cl.body)}</div>
+    </div>
+  `;
+
+  document.getElementById('copy-cover-letter').addEventListener('click', function() {
+    copyToClipboard(cl.body, this);
+  });
+}
+
 function renderFoundContacts(contacts) {
   const card = document.getElementById('card-contacts');
   const body = document.getElementById('body-contacts');
@@ -1436,6 +1465,7 @@ function renderOutput(data) {
   renderEmailTools(data.emailFinderTools);
   renderEmailSequence(data.emailSequence);
   renderFoundContacts(data.foundContacts);
+  if (data.coverLetter) renderCoverLetter(data.coverLetter);
 
   dom.outputSection.querySelectorAll('.output-card').forEach(c => {
     c.style.animation = 'none';
@@ -1669,6 +1699,22 @@ function downloadPDF() {
     doc.text(line, margin + 5, y);
     y += 4.8;
   });
+
+  // ── Section 6: Cover Letter ──
+  if (data.coverLetter?.body) {
+    y += 4;
+    addSectionTitle('06', 'Cover Letter');
+    const clLines = data.coverLetter.body.split('\n');
+    clLines.forEach(line => {
+      checkPageBreak(6);
+      if (line.trim() === '') { y += 3; return; }
+      const wrapped = doc.splitTextToSize(line, contentW);
+      doc.setFontSize(8.5);
+      doc.setTextColor(...ink);
+      doc.setFont('helvetica', 'normal');
+      wrapped.forEach(wl => { doc.text(wl, margin, y); y += 5; });
+    });
+  }
 
   doc.save('sidedoor-outreach-kit.pdf');
   showToast('PDF downloaded');
