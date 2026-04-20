@@ -302,9 +302,12 @@ async function searchTavily(tavilyKey, companyName, titles) {
   const searches = await Promise.all(
     titles.map(async title => {
       try {
+        const tavilyAbort = new AbortController();
+        const tavilyTimeout = setTimeout(() => tavilyAbort.abort(), 10000);
         const res = await fetch(TAVILY_SEARCH, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tavilyKey}` },
+          signal: tavilyAbort.signal,
           body: JSON.stringify({
             query:          `site:linkedin.com/in "${title}" "${companyName}"`,
             search_depth:   'basic',
@@ -312,6 +315,7 @@ async function searchTavily(tavilyKey, companyName, titles) {
             include_domains: ['linkedin.com'],
           }),
         });
+        clearTimeout(tavilyTimeout);
         if (!res.ok) {
           console.error('[Tavily] Search failed:', res.status, await res.text().catch(() => ''));
           return [];
@@ -336,14 +340,18 @@ async function searchTavily(tavilyKey, companyName, titles) {
 // Enriches a contact using their LinkedIn URL to get verified email + full profile.
 async function enrichPerson(prospeoKey, linkedinUrl) {
   try {
+    const prospeoAbort = new AbortController();
+    const prospeoTimeout = setTimeout(() => prospeoAbort.abort(), 8000);
     const res = await fetch(PROSPEO_ENRICH, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-KEY': prospeoKey },
+      signal: prospeoAbort.signal,
       body: JSON.stringify({
         data: { linkedin_url: linkedinUrl },
         only_verified_email: true,
       }),
     });
+    clearTimeout(prospeoTimeout);
     if (!res.ok) return null;
     const data = await res.json();
     if (data.error) return null;
