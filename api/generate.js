@@ -288,19 +288,22 @@ Return ONLY this JSON structure:
 // ─── System Prompt — Discover Mode, Pass 2 (pitch emails per real company) ──
 const SYSTEM_PROMPT_PITCH = `You are an expert outreach strategist. You have sent over 50,000 cold emails, booked 200+ meetings, and achieved 6%+ reply rates using a specific framework. Your job is to write a cold pitch email sequence for a job seeker reaching out to a company that has NOT posted a specific job opening — they are proactively offering to help based on a real, current signal about that company (recent growth, funding, or hiring activity).
 
-You will receive the candidate's background and a list of companies, each with a real signal about why now is a good time to reach out, and the decision-maker titles to target there. You will return ONLY valid JSON. No markdown. No code fences. No prose outside the JSON.
+You will receive the candidate's background and a list of companies. Each company has a SIGNAL and a SIGNAL STRENGTH, plus the decision-maker titles to target there. You will return ONLY valid JSON. No markdown. No code fences. No prose outside the JSON.
 
 Follow the exact same 6 principles and email structure as a normal cold pitch:
 1. Be memorable, not professional — specific beats polished.
-2. Speak to hidden pains — the growth/funding signal is a symptom of a problem, not proof of one. Be curious about it, don't claim to know their problems for certain.
+2. Speak to hidden pains — a growth/funding signal is a symptom of a problem, not proof of one. Be curious about it, don't claim to know their problems for certain.
 3. Write at a 5th grade level.
 4. Break patterns — banned phrases: "I hope this email finds you well", "I am writing to express my interest", "Please find attached", "I am excited to apply", "I would be a great fit", "Proven track record", "Results-driven professional", "leverage", "synergy", "passionate", "dynamic", "translates directly", "turn X into Y" constructions, "track and optimize", "I am well-versed". Never use an em dash (—) anywhere. Never mirror the signal fact back word for word.
-5. Be curious, never assume — frame the signal as "usually when a company is doing X, it means Y" rather than asserting Y as fact.
+5. Be curious, never assume — frame a signal as "usually when a company is doing X, it means Y" rather than asserting Y as fact.
 6. Never be condescending.
+7. NEVER mention employee counts, headcount ranges, size brackets, or any internal-sounding data category (e.g. "the 201-500 range," "in your size bracket"). No real person talks like that. If size comes up at all, describe it the way a human would ("a team your size," "growing this fast").
 
-Since there is no job posting, Email 1 must open by referencing the specific real signal (the growth stat, funding event, or hiring surge) rather than "reaching out about the [Role] position." Good opener pattern: "Noticed [Company] [specific signal]. [why that usually creates a specific need]."
+SIGNAL STRENGTH tells you how to open Email 1:
+- If SIGNAL STRENGTH is "specific" — open by referencing that signal directly. Good pattern: "Noticed [Company] [specific signal]. [why that usually creates a specific need]."
+- If SIGNAL STRENGTH is "general" — do NOT state the signal as a confirmed fact or invent specifics that weren't given. Open instead with a curious, general observation tied to their industry or stage (e.g. "Companies at your stage in [industry] usually..."), then pivot to what the candidate brings. Still specific in tone, just not fabricating a stat you don't have.
 
-EMAIL 1: Max 6 lines. Reference the real signal. One achievement from the candidate's background with a specific number. End with a low-pressure ask for a conversation.
+EMAIL 1: Max 6 lines. One achievement from the candidate's background with a specific number. End with a low-pressure ask for a conversation.
 EMAIL 2 (Day 3): Max 4 lines. Subject = "Re: " + Email 1 subject. MUST start with exactly "Following up on my note from earlier this week." Introduce ONE new angle not in Email 1.
 EMAIL 3 (Day 6): Max 3 lines. Subject one of "last thought", "one more thought", "last note". End with "Either way, [specific closing phrase tied to their actual situation]." Never "best of luck" or "good luck with the build."
 
@@ -354,6 +357,7 @@ function buildPitchPrompt(background, opportunities) {
   const companyBlocks = opportunities.map(o => `
 COMPANY: ${o.company}
 SIGNAL (why now): ${o.whyThisCompany}
+SIGNAL STRENGTH: ${o.hasStrongSignal ? 'specific' : 'general'}
 TARGET TITLES: ${o.titles.join(', ')}`).join('\n');
 
   return `Write a pitch email sequence for each company below, using the candidate's background.
@@ -434,6 +438,11 @@ async function searchGrowingCompanies(prospeoKey, industries, excludeNames = [])
       }
       const data = await res.json();
       console.log('[Prospeo] search-company results:', data?.results?.length || 0);
+      if (data?.results?.[0]) {
+        // Diagnostic — we're not 100% certain of Prospeo's exact response field names for
+        // growth/funding stats yet. Remove once confirmed against real production traffic.
+        console.log('[Prospeo] sample company object:', JSON.stringify(data.results[0]).slice(0, 1800));
+      }
       return data?.results || [];
     } catch (err) {
       clearTimeout(prospeoTimeout);
@@ -458,21 +467,41 @@ async function searchGrowingCompanies(prospeoKey, industries, excludeNames = [])
     const c = r.company || r;
     const name = c.name || c.company_name;
     if (!name || excluded.has(name.toLowerCase()) || seen.has(name.toLowerCase())) continue;
+
+    // Belt-and-suspenders size check — don't just trust the server-side
+    // company_headcount_range filter matched the way we expect. If we can read a
+    // headcount figure and it's clearly outside the realistic range, skip it here too.
+    const employeeCount = c.employee_count ?? c.headcount ?? null;
+    const employeeRange = c.employee_range ?? c.headcount_range ?? null;
+    const rangeMatch = typeof employeeRange === 'string' ? employeeRange.match(/(\d+)/g) : null;
+    const lowerBound = employeeCount ?? (rangeMatch ? parseInt(rangeMatch[0], 10) : null);
+    if (typeof lowerBound === 'number' && lowerBound > 500) {
+      console.log('[Prospeo] Skipping oversized company:', name, '— employee data:', employeeCount, employeeRange);
+      continue;
+    }
+
     seen.add(name.toLowerCase());
 
-    const growth  = c.headcount_growth ?? c.company_headcount_growth;
-    const funding = c.funding || {};
-    const stage   = funding.latest_funding_stage || funding.stage;
+    const growth    = c.headcount_growth ?? c.company_headcount_growth ?? c.headcount_growth_percent ?? c.growth_percent;
+    const funding    = c.funding || {};
+    const stage      = funding.latest_funding_stage || funding.stage;
+    const activeJobs = c.active_job_postings_count ?? c.job_posting_quantity ?? c.open_roles_count;
 
-    let signal;
+    let signal, hasStrongSignal;
     if (growth) {
       signal = `grew headcount roughly ${growth}% over the last 6 months`;
+      hasStrongSignal = true;
     } else if (stage) {
       signal = `recently raised a ${stage} round`;
-    } else if (c.employee_range) {
-      signal = `is a fast-growing company in the ${c.employee_range} employee range`;
+      hasStrongSignal = true;
+    } else if (activeJobs) {
+      signal = `currently has ${activeJobs} open roles`;
+      hasStrongSignal = true;
     } else {
-      signal = 'is actively growing right now';
+      // No confirmed stat from this result — keep it vague and human, never mention
+      // internal data like employee-count buckets (see SYSTEM_PROMPT_PITCH rule 7).
+      signal = `is a growing company in the ${c.industry || industries[0]} space`;
+      hasStrongSignal = false;
     }
 
     companies.push({
@@ -480,6 +509,7 @@ async function searchGrowingCompanies(prospeoKey, industries, excludeNames = [])
       domain: c.website || c.domain || null,
       industry: c.industry || industries[0],
       signal,
+      hasStrongSignal,
     });
 
     if (companies.length >= 3) break;
@@ -716,9 +746,12 @@ async function handleDiscoverMode(req, res, apiKey, prospeoKey) {
   const baseOpportunities = companies.map(c => ({
     company:        c.name,
     domain:         c.domain,
-    whyThisCompany: `${c.name} ${c.signal}. Companies moving this fast usually need more hands than their current team has, before they've gotten around to posting a role for it.`,
+    whyThisCompany: c.hasStrongSignal
+      ? `${c.name} ${c.signal}. Companies moving this fast usually need more hands than their current team has, before they've gotten around to posting a role for it.`
+      : `${c.name} ${c.signal}. Worth a look even without a specific hiring signal — smaller, growing teams often need help before they've formalized a role for it.`,
     titles,
-    contacts:       contactsByCompany[c.name] || [],
+    contacts:        contactsByCompany[c.name] || [],
+    hasStrongSignal: c.hasStrongSignal,
   }));
 
   // Pass 2: pitch email sequence per company, grounded in the real signal
