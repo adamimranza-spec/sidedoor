@@ -1,13 +1,29 @@
 // api/generate.js
-// Vercel serverless function — calls Claude API, Tavily (LinkedIn profile search), and Prospeo (email enrichment).
-// Required env vars: ANTHROPIC_API_KEY, TAVILY_API_KEY, PROSPEO_API_KEY
+// Vercel serverless function — calls Claude API and Prospeo (company/person search + email enrichment).
+// Required env vars: ANTHROPIC_API_KEY, PROSPEO_API_KEY
 
-const ANTHROPIC_API  = 'https://api.anthropic.com/v1/messages';
-const MODEL          = 'claude-sonnet-4-5';
-const TAVILY_SEARCH  = 'https://api.tavily.com/search';
-const PROSPEO_ENRICH = 'https://api.prospeo.io/enrich-person';
+const ANTHROPIC_API         = 'https://api.anthropic.com/v1/messages';
+const MODEL                 = 'claude-sonnet-4-5';
+const PROSPEO_SEARCH_COMPANY = 'https://api.prospeo.io/search-company';
+const PROSPEO_SEARCH_PERSON  = 'https://api.prospeo.io/search-person';
+const PROSPEO_ENRICH         = 'https://api.prospeo.io/enrich-person';
 
-// ─── System Prompt ───────────────────────────────────────────────────────────
+// Valid values for the company_industry filter (Prospeo Industries enum).
+// Used to constrain Claude's industry picks in discover mode so they map to a real filter value.
+const INDUSTRY_ENUM = [
+  'Software Development', 'Technology, Information and Internet', 'IT Services and IT Consulting',
+  'Business Consulting and Services', 'Financial Services', 'Advertising Services', 'Marketing Services',
+  'Design Services', 'Professional Training and Coaching', 'Human Resources Services', 'Accounting',
+  'Legal Services', 'Media Production and Publishing', 'Insurance', 'Real Estate', 'General Retail',
+  'Retail Apparel and Fashion', 'Hospitality', 'Restaurants', 'Hospitals and Health Care',
+  'Wellness and Fitness Services', 'Events Services', 'Travel Arrangements', 'Higher Education',
+  'Education Administration Programs', 'Non-profit Organizations', 'Entertainment Providers',
+  'Industrial Machinery Manufacturing', 'Machinery Manufacturing', 'General Manufacturing',
+  'Motor Vehicle Manufacturing', 'Construction', 'Architecture and Planning', 'Consumer Services',
+  'General Wholesale', 'Spectator Sports',
+];
+
+// ─── System Prompt — Job Description Mode ────────────────────────────────────
 // This lives server-side only. Never exposed to the browser.
 const SYSTEM_PROMPT = `You are an expert job outreach strategist. You have sent over 50,000 cold emails, booked 200+ meetings, and achieved 6%+ reply rates using a specific framework. Your job is to generate a complete, personalized outreach kit for a job seeker who wants to go directly to decision-makers instead of applying through an ATS.
 
@@ -243,7 +259,61 @@ Return ONLY this JSON structure. Nothing else. No text before or after. No markd
   }
 }`;
 
-// ─── User Prompt Builder ─────────────────────────────────────────────────────
+// ─── System Prompt — Discover Mode, Pass 1 (persona + target industries) ────
+const SYSTEM_PROMPT_PERSONA = `You are an expert career strategist who helps people figure out which companies would actually want to hire them, before they've found a specific job posting.
+
+You will receive a candidate's background/CV. You will return ONLY valid JSON. No markdown. No code fences. No prose outside the JSON.
+
+Read the background and figure out:
+1. Their core professional persona — what they actually do and who they do it for (e.g. "B2B demand generation marketer with a SaaS focus" not just "marketer").
+2. 2-3 target industries where fast-growing companies would plausibly need exactly this skill set right now. You MUST choose industries ONLY from this exact list (copy the string exactly, case-sensitive):
+${INDUSTRY_ENUM.map(i => `- ${i}`).join('\n')}
+3. 2-3 decision-maker job titles this person should target once we find real companies — the person who would actually hire for this skill set. Prefer VP/Director/Head-of level titles in the relevant function, plus CEO/Founder as a fallback for smaller companies.
+
+Return ONLY this JSON structure:
+{
+  "persona": {
+    "summary": "One or two sentences describing this person's professional identity and who they're best positioned to help.",
+    "industries": ["Industry from the list above", "Second industry from the list above"],
+    "titles": ["Target title 1", "Target title 2", "Target title 3"]
+  }
+}`;
+
+// ─── System Prompt — Discover Mode, Pass 2 (pitch emails per real company) ──
+const SYSTEM_PROMPT_PITCH = `You are an expert outreach strategist. You have sent over 50,000 cold emails, booked 200+ meetings, and achieved 6%+ reply rates using a specific framework. Your job is to write a cold pitch email sequence for a job seeker reaching out to a company that has NOT posted a specific job opening — they are proactively offering to help based on a real, current signal about that company (recent growth, funding, or hiring activity).
+
+You will receive the candidate's background and a list of companies, each with a real signal about why now is a good time to reach out, and the decision-maker titles to target there. You will return ONLY valid JSON. No markdown. No code fences. No prose outside the JSON.
+
+Follow the exact same 6 principles and email structure as a normal cold pitch:
+1. Be memorable, not professional — specific beats polished.
+2. Speak to hidden pains — the growth/funding signal is a symptom of a problem, not proof of one. Be curious about it, don't claim to know their problems for certain.
+3. Write at a 5th grade level.
+4. Break patterns — banned phrases: "I hope this email finds you well", "I am writing to express my interest", "Please find attached", "I am excited to apply", "I would be a great fit", "Proven track record", "Results-driven professional", "leverage", "synergy", "passionate", "dynamic", "translates directly", "turn X into Y" constructions, "track and optimize", "I am well-versed". Never use an em dash (—) anywhere. Never mirror the signal fact back word for word.
+5. Be curious, never assume — frame the signal as "usually when a company is doing X, it means Y" rather than asserting Y as fact.
+6. Never be condescending.
+
+Since there is no job posting, Email 1 must open by referencing the specific real signal (the growth stat, funding event, or hiring surge) rather than "reaching out about the [Role] position." Good opener pattern: "Noticed [Company] [specific signal]. [why that usually creates a specific need]."
+
+EMAIL 1: Max 6 lines. Reference the real signal. One achievement from the candidate's background with a specific number. End with a low-pressure ask for a conversation.
+EMAIL 2 (Day 3): Max 4 lines. Subject = "Re: " + Email 1 subject. MUST start with exactly "Following up on my note from earlier this week." Introduce ONE new angle not in Email 1.
+EMAIL 3 (Day 6): Max 3 lines. Subject one of "last thought", "one more thought", "last note". End with "Either way, [specific closing phrase tied to their actual situation]." Never "best of luck" or "good luck with the build."
+
+Return ONLY this JSON structure:
+{
+  "opportunities": [
+    {
+      "company": "Exact company name as given",
+      "emailSequence": {
+        "email1": {"subject": "...", "body": "Paragraphs separated by \\n\\n. 5-8 lines total.", "day": "Day 1"},
+        "email2": {"subject": "Re: ...", "body": "Following up on my note from earlier this week.\\n\\n...", "day": "Day 3"},
+        "email3": {"subject": "last thought - ...", "body": "...", "day": "Day 6"},
+        "cadenceNote": "Send Email 1 today. Send Email 2 on Day 3. Send Email 3 on Day 6. Do not send on weekends. Best send times: Tuesday through Thursday, 8–10am in their timezone. If they reply, stop the sequence and reply directly."
+      }
+    }
+  ]
+}`;
+
+// ─── User Prompt Builders ─────────────────────────────────────────────────────
 function buildUserPrompt(jobDesc, background, companyName, companySize) {
   const sizeLabel = {
     under50:  'Under 50 people',
@@ -265,7 +335,33 @@ ${background}
 Return ONLY valid JSON. No markdown. No code fences. No text before or after the JSON.`;
 }
 
-// ─── Claude JSON Parser (mirrors frontend fallback logic) ─────────────────────
+function buildPersonaPrompt(background) {
+  return `Analyze this candidate's background and return their persona, target industries, and target titles as JSON.
+
+CANDIDATE BACKGROUND AND SKILLS:
+${background}
+
+Return ONLY valid JSON. No markdown. No code fences. No text before or after the JSON.`;
+}
+
+function buildPitchPrompt(background, opportunities) {
+  const companyBlocks = opportunities.map(o => `
+COMPANY: ${o.company}
+SIGNAL (why now): ${o.whyThisCompany}
+TARGET TITLES: ${o.titles.join(', ')}`).join('\n');
+
+  return `Write a pitch email sequence for each company below, using the candidate's background.
+
+CANDIDATE BACKGROUND AND SKILLS:
+${background}
+
+COMPANIES:
+${companyBlocks}
+
+Return ONLY valid JSON with one entry per company, in the same order. No markdown. No code fences. No text before or after the JSON.`;
+}
+
+// ─── Claude Helpers ────────────────────────────────────────────────────────────
 function parseClaudeJSON(text) {
   const t = text.trim();
   try { return JSON.parse(t); } catch (_) {}
@@ -276,68 +372,154 @@ function parseClaudeJSON(text) {
   throw new Error('Could not parse Claude JSON');
 }
 
-// ─── Tavily Search ────────────────────────────────────────────────────────────
+async function callClaude(apiKey, systemPrompt, userPrompt, maxTokens = 4096) {
+  const res = await fetch(ANTHROPIC_API, {
+    method: 'POST',
+    headers: {
+      'Content-Type':      'application/json',
+      'x-api-key':         apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model:      MODEL,
+      max_tokens: maxTokens,
+      system:     systemPrompt,
+      messages:   [{ role: 'user', content: userPrompt }],
+    }),
+  });
 
-// Extracts a clean LinkedIn profile URL from a Tavily result URL.
-function extractLinkedInUrl(url) {
-  const match = url?.match(/https?:\/\/(?:www\.)?linkedin\.com\/in\/[^/?#]+/);
-  return match ? match[0] : null;
+  if (!res.ok) {
+    let errBody = {};
+    try { errBody = await res.json(); } catch (_) {}
+    const err = new Error(errBody?.error?.message || `Claude API error (${res.status})`);
+    err.status = res.status;
+    throw err;
+  }
+
+  const data = await res.json();
+  const rawResult = data?.content?.[0]?.text;
+  if (!rawResult) throw new Error('Empty response from Claude.');
+  return parseClaudeJSON(rawResult);
 }
 
-// Extracts a person's name from a LinkedIn page title returned by Tavily.
-// Typical formats: "John Smith - VP Marketing at Acme | LinkedIn"
-//                  "Jane Doe | Director of Sales - Acme"
-function extractNameFromTitle(title) {
-  if (!title) return null;
-  const clean = title.replace(/\s*\|\s*LinkedIn\s*$/i, '').trim();
-  const name = clean.split(/\s+[-–|]\s+/)[0].trim();
-  // Sanity check: looks like a real name (2-5 words, letters only)
-  if (name && /^[A-Za-z\s'.,-]{2,50}$/.test(name) && name.split(' ').length <= 5) return name;
-  return null;
-}
-
-// Searches Tavily for LinkedIn profiles matching each target title at the company.
-// Runs one search per title in parallel. Returns { linkedinUrl, name, title }[].
-async function searchTavily(tavilyKey, companyName, titles) {
-  const searches = await Promise.all(
-    titles.map(async title => {
-      try {
-        const tavilyAbort = new AbortController();
-        const tavilyTimeout = setTimeout(() => tavilyAbort.abort(), 10000);
-        const res = await fetch(TAVILY_SEARCH, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${tavilyKey}` },
-          signal: tavilyAbort.signal,
-          body: JSON.stringify({
-            query:          `site:linkedin.com/in "${title}" "${companyName}"`,
-            search_depth:   'basic',
-            max_results:    5,
-            include_domains: ['linkedin.com'],
-          }),
-        });
-        clearTimeout(tavilyTimeout);
-        if (!res.ok) {
-          console.error('[Tavily] Search failed:', res.status, await res.text().catch(() => ''));
-          return [];
-        }
-        const data = await res.json();
-        return (data.results || []).map(r => ({
-          linkedinUrl: extractLinkedInUrl(r.url),
-          name:        extractNameFromTitle(r.title),
-          title,
-        })).filter(p => p.linkedinUrl);
-      } catch (err) {
-        console.error('[Tavily] Search error for title', title, ':', err.message);
+// ─── Prospeo: Company Search (discover mode — finds real, fast-growing companies) ──
+async function searchGrowingCompanies(prospeoKey, industries, excludeNames = []) {
+  async function runSearch(extraFilters) {
+    const prospeoAbort = new AbortController();
+    const prospeoTimeout = setTimeout(() => prospeoAbort.abort(), 10000);
+    try {
+      const res = await fetch(PROSPEO_SEARCH_COMPANY, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-KEY': prospeoKey },
+        signal: prospeoAbort.signal,
+        body: JSON.stringify({
+          page: 1,
+          filters: {
+            company_industry: { include: industries },
+            ...extraFilters,
+          },
+        }),
+      });
+      clearTimeout(prospeoTimeout);
+      if (!res.ok) {
+        console.error('[Prospeo] search-company failed:', res.status, await res.text().catch(() => ''));
         return [];
       }
-    })
-  );
-  return searches.flat();
+      const data = await res.json();
+      console.log('[Prospeo] search-company results:', data?.results?.length || 0);
+      return data?.results || [];
+    } catch (err) {
+      clearTimeout(prospeoTimeout);
+      console.error('[Prospeo] search-company error:', err.message);
+      return [];
+    }
+  }
+
+  // Primary: filter on headcount growth over the last 6 months.
+  let results = await runSearch({ company_headcount_growth: { min: 15, timeframe_months: 6 } });
+
+  // Fallback: filter on recent funding if the growth filter comes up empty.
+  if (results.length === 0) {
+    results = await runSearch({ company_funding: { days_since_last_funding: { max: 365 } } });
+  }
+
+  const excluded = new Set(excludeNames.map(n => n.toLowerCase()));
+  const companies = [];
+  const seen = new Set();
+
+  for (const r of results) {
+    const c = r.company || r;
+    const name = c.name || c.company_name;
+    if (!name || excluded.has(name.toLowerCase()) || seen.has(name.toLowerCase())) continue;
+    seen.add(name.toLowerCase());
+
+    const growth  = c.headcount_growth ?? c.company_headcount_growth;
+    const funding = c.funding || {};
+    const stage   = funding.latest_funding_stage || funding.stage;
+
+    let signal;
+    if (growth) {
+      signal = `grew headcount roughly ${growth}% over the last 6 months`;
+    } else if (stage) {
+      signal = `recently raised a ${stage} round`;
+    } else if (c.employee_range) {
+      signal = `is a fast-growing company in the ${c.employee_range} employee range`;
+    } else {
+      signal = 'is actively growing right now';
+    }
+
+    companies.push({
+      name,
+      domain: c.website || c.domain || null,
+      industry: c.industry || industries[0],
+      signal,
+    });
+
+    if (companies.length >= 3) break;
+  }
+
+  return companies;
 }
 
-// ─── Prospeo Email Enrichment ─────────────────────────────────────────────────
+// ─── Prospeo: Person Search (replaces the old Tavily LinkedIn-scrape step) ──
+async function searchPersonAtCompany(prospeoKey, companyNames, titles) {
+  const prospeoAbort = new AbortController();
+  const prospeoTimeout = setTimeout(() => prospeoAbort.abort(), 10000);
+  try {
+    const res = await fetch(PROSPEO_SEARCH_PERSON, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-KEY': prospeoKey },
+      signal: prospeoAbort.signal,
+      body: JSON.stringify({
+        page: 1,
+        filters: {
+          company: { names: { include: companyNames } },
+          person_job_title: { include: titles },
+        },
+        max_person_per_company: 3,
+      }),
+    });
+    clearTimeout(prospeoTimeout);
+    if (!res.ok) {
+      console.error('[Prospeo] search-person failed:', res.status, await res.text().catch(() => ''));
+      return [];
+    }
+    const data = await res.json();
+    console.log('[Prospeo] search-person results:', data?.results?.length || 0);
+    return (data?.results || []).map(r => ({
+      linkedinUrl: r.person?.linkedin_url || null,
+      name:        r.person?.full_name || null,
+      title:       r.person?.current_job_title || r.person?.headline || null,
+      company:     r.company?.name || r.person?.job_history?.[0]?.company_name || null,
+    })).filter(p => p.linkedinUrl);
+  } catch (err) {
+    clearTimeout(prospeoTimeout);
+    console.error('[Prospeo] search-person error:', err.message);
+    return [];
+  }
+}
 
-// Enriches a contact using their LinkedIn URL to get verified email + full profile.
+// ─── Prospeo: Email Enrichment (unchanged) ───────────────────────────────────
 async function enrichPerson(prospeoKey, linkedinUrl) {
   try {
     const prospeoAbort = new AbortController();
@@ -361,12 +543,10 @@ async function enrichPerson(prospeoKey, linkedinUrl) {
   }
 }
 
-async function findContacts(tavilyKey, prospeoKey, companyName, titles) {
-  // Step 1: Tavily finds LinkedIn profile URLs for each target title
-  const rawCandidates = await searchTavily(tavilyKey, companyName, titles);
-  console.log('[Tavily] Raw candidates:', rawCandidates.length);
+// Finds and enriches contacts for a single company + title list (job mode).
+async function findContacts(prospeoKey, companyName, titles) {
+  const rawCandidates = await searchPersonAtCompany(prospeoKey, [companyName], titles);
 
-  // Deduplicate by LinkedIn URL, cap at 5
   const seen = new Set();
   const candidates = [];
   for (const c of rawCandidates) {
@@ -376,12 +556,10 @@ async function findContacts(tavilyKey, prospeoKey, companyName, titles) {
     if (candidates.length >= 5) break;
   }
 
-  // Step 2: Prospeo enriches each profile via LinkedIn URL — full name, title, verified email
   const enriched = await Promise.all(
     candidates.map(c => enrichPerson(prospeoKey, c.linkedinUrl).catch(() => null))
   );
 
-  // Step 3: Assemble contacts — Prospeo data wins, Tavily name/title as fallback
   return candidates.map((c, i) => {
     const d = enriched[i];
     return {
@@ -394,19 +572,173 @@ async function findContacts(tavilyKey, prospeoKey, companyName, titles) {
   }).filter(c => c.name);
 }
 
+// Finds and enriches contacts across multiple companies in one search-person call (discover mode).
+// Returns a map of companyName -> contacts[], capped per company.
+async function findContactsForCompanies(prospeoKey, companies, titles, perCompanyCap = 2) {
+  const companyNames = companies.map(c => c.name);
+  const rawCandidates = await searchPersonAtCompany(prospeoKey, companyNames, titles);
+
+  const byCompany = {};
+  for (const name of companyNames) byCompany[name] = [];
+
+  const seen = new Set();
+  for (const c of rawCandidates) {
+    if (!c.linkedinUrl || seen.has(c.linkedinUrl)) continue;
+    const bucket = companyNames.find(n => c.company && c.company.toLowerCase() === n.toLowerCase()) || companyNames[0];
+    if (byCompany[bucket].length >= perCompanyCap) continue;
+    seen.add(c.linkedinUrl);
+    byCompany[bucket].push(c);
+  }
+
+  const allCandidates = Object.values(byCompany).flat();
+  const enriched = await Promise.all(
+    allCandidates.map(c => enrichPerson(prospeoKey, c.linkedinUrl).catch(() => null))
+  );
+  const enrichedByUrl = new Map(allCandidates.map((c, i) => [c.linkedinUrl, enriched[i]]));
+
+  const result = {};
+  for (const [company, candidates] of Object.entries(byCompany)) {
+    result[company] = candidates.map(c => {
+      const d = enrichedByUrl.get(c.linkedinUrl);
+      return {
+        name:             d?.person?.full_name      || c.name || '',
+        title:            d?.person?.job_title      || c.title,
+        email:            d?.person?.email?.address || null,
+        linkedin:         d?.person?.linkedin_url   || c.linkedinUrl,
+        linkedinIsSearch: false,
+      };
+    }).filter(c => c.name);
+  }
+  return result;
+}
+
+// ─── Handler: Job Description Mode ──────────────────────────────────────────
+async function handleJobMode(req, res, apiKey, prospeoKey) {
+  const { jobDesc, background, companyName, companySize } = req.body || {};
+  if (!jobDesc || !background || !companyName || !companySize) {
+    return res.status(400).json({ error: 'Missing required fields.' });
+  }
+
+  let parsed;
+  try {
+    parsed = await callClaude(apiKey, SYSTEM_PROMPT, buildUserPrompt(jobDesc, background, companyName, companySize));
+  } catch (err) {
+    console.error('Claude call failed (job mode):', err.message);
+    const statusMessages = {
+      401: 'Invalid API key. Check the ANTHROPIC_API_KEY environment variable in Vercel.',
+      403: 'API key does not have permission. Check your Anthropic account.',
+      429: 'Rate limit reached. Please wait 30 seconds and try again.',
+      400: 'Request error — the inputs may be too long. Try shortening the job description.',
+    };
+    const message = statusMessages[err.status] || 'Claude is experiencing issues. Try again in a moment.';
+    const clientStatus = err.status === 429 ? 429 : (err.status >= 500 || !err.status) ? 502 : err.status;
+    return res.status(clientStatus).json({ error: message });
+  }
+
+  if (prospeoKey) {
+    try {
+      const titles = parsed?.decisionMakers?.titles || [];
+      const contacts = titles.length > 0
+        ? await findContacts(prospeoKey, companyName.trim(), titles)
+        : [];
+      console.log('[Contacts] Found:', contacts.length);
+      parsed.foundContacts = contacts;
+    } catch (contactErr) {
+      console.error('[Contacts] Failed, returning kit without contacts:', contactErr.message);
+    }
+  } else {
+    console.warn('[Contacts] PROSPEO_API_KEY not set — skipping contact search.');
+  }
+
+  return res.status(200).json({ result: JSON.stringify(parsed) });
+}
+
+// ─── Handler: Discover Mode (CV-only, no job posting) ───────────────────────
+async function handleDiscoverMode(req, res, apiKey, prospeoKey) {
+  const { background } = req.body || {};
+  if (!background) {
+    return res.status(400).json({ error: 'Missing required field: background.' });
+  }
+
+  // Pass 1: persona + target industries + target titles
+  let personaData;
+  try {
+    personaData = await callClaude(apiKey, SYSTEM_PROMPT_PERSONA, buildPersonaPrompt(background), 1024);
+  } catch (err) {
+    console.error('Claude call failed (persona pass):', err.message);
+    const clientStatus = err.status === 429 ? 429 : (err.status >= 500 || !err.status) ? 502 : (err.status || 502);
+    return res.status(clientStatus).json({ error: 'Could not analyze your background. Try again in a moment.' });
+  }
+
+  const persona = personaData?.persona;
+  if (!persona || !Array.isArray(persona.industries) || !persona.industries.length) {
+    return res.status(502).json({ error: 'Could not determine target industries. Click Regenerate.' });
+  }
+
+  const industries = persona.industries.filter(i => INDUSTRY_ENUM.includes(i));
+  const titles = persona.titles || [];
+
+  if (!prospeoKey) {
+    return res.status(500).json({
+      error: 'The app is not configured yet. The site owner needs to add the PROSPEO_API_KEY environment variable in Vercel.',
+    });
+  }
+
+  // Find real, fast-growing companies in the target industries
+  let companies = [];
+  try {
+    companies = await searchGrowingCompanies(prospeoKey, industries.length ? industries : persona.industries);
+  } catch (err) {
+    console.error('[Prospeo] Company discovery failed:', err.message);
+  }
+
+  if (!companies.length) {
+    return res.status(200).json({
+      result: JSON.stringify({ persona, opportunities: [] }),
+    });
+  }
+
+  // Find contacts at each company
+  let contactsByCompany = {};
+  try {
+    contactsByCompany = await findContactsForCompanies(prospeoKey, companies, titles);
+  } catch (err) {
+    console.error('[Prospeo] Contact search failed:', err.message);
+  }
+
+  const baseOpportunities = companies.map(c => ({
+    company:        c.name,
+    domain:         c.domain,
+    whyThisCompany: `${c.name} ${c.signal}. Companies moving this fast usually need more hands than their current team has, before they've gotten around to posting a role for it.`,
+    titles,
+    contacts:       contactsByCompany[c.name] || [],
+  }));
+
+  // Pass 2: pitch email sequence per company, grounded in the real signal
+  let pitchData = { opportunities: [] };
+  try {
+    pitchData = await callClaude(apiKey, SYSTEM_PROMPT_PITCH, buildPitchPrompt(background, baseOpportunities), 4096);
+  } catch (err) {
+    console.error('Claude call failed (pitch pass):', err.message);
+  }
+
+  const pitchByCompany = new Map((pitchData.opportunities || []).map(o => [o.company, o.emailSequence]));
+
+  const opportunities = baseOpportunities.map(o => ({
+    ...o,
+    emailSequence: pitchByCompany.get(o.company) || null,
+  }));
+
+  return res.status(200).json({ result: JSON.stringify({ persona, opportunities }) });
+}
+
 // ─── Handler ─────────────────────────────────────────────────────────────────
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed.' });
   }
 
-  const { jobDesc, background, companyName, companySize } = req.body || {};
-  if (!jobDesc || !background || !companyName || !companySize) {
-    return res.status(400).json({ error: 'Missing required fields.' });
-  }
-
   const apiKey     = process.env.ANTHROPIC_API_KEY;
-  const tavilyKey  = process.env.TAVILY_API_KEY;
   const prospeoKey = process.env.PROSPEO_API_KEY;
 
   if (!apiKey) {
@@ -416,87 +748,15 @@ module.exports = async function handler(req, res) {
     });
   }
 
-  // ── Step 1: Call Claude ───────────────────────────────────────────────────
-  let claudeRes;
+  const mode = req.body?.mode === 'discover' ? 'discover' : 'job';
+
   try {
-    claudeRes = await fetch(ANTHROPIC_API, {
-      method: 'POST',
-      headers: {
-        'Content-Type':      'application/json',
-        'x-api-key':         apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model:      MODEL,
-        max_tokens: 4096,
-        system:     SYSTEM_PROMPT,
-        messages:   [{ role: 'user', content: buildUserPrompt(jobDesc, background, companyName, companySize) }],
-      }),
-    });
-  } catch (networkErr) {
-    console.error('Network error reaching Claude API:', networkErr);
-    return res.status(502).json({ error: 'Could not reach the Claude API. Try again in a moment.' });
-  }
-
-  if (!claudeRes.ok) {
-    let errBody = {};
-    try { errBody = await claudeRes.json(); } catch (_) {}
-
-    const statusMessages = {
-      401: 'Invalid API key. Check the ANTHROPIC_API_KEY environment variable in Vercel.',
-      403: 'API key does not have permission. Check your Anthropic account.',
-      429: 'Rate limit reached. Please wait 30 seconds and try again.',
-      400: 'Request error — the inputs may be too long. Try shortening the job description.',
-      500: 'Claude is experiencing issues. Try again in a moment.',
-      529: 'Claude is overloaded right now. Try again in a moment.',
-    };
-
-    const message = statusMessages[claudeRes.status]
-      || errBody?.error?.message
-      || `Unexpected error from Claude (${claudeRes.status}).`;
-
-    const clientStatus = claudeRes.status === 429 ? 429
-      : claudeRes.status >= 500 ? 502
-      : claudeRes.status;
-
-    console.error(`Claude API error ${claudeRes.status}:`, message);
-    return res.status(clientStatus).json({ error: message });
-  }
-
-  let claudeData;
-  try {
-    claudeData = await claudeRes.json();
-  } catch (parseErr) {
-    console.error('Failed to parse Claude response:', parseErr);
-    return res.status(502).json({ error: 'Received an unreadable response from Claude. Try again.' });
-  }
-
-  const rawResult = claudeData?.content?.[0]?.text;
-  if (!rawResult) {
-    return res.status(502).json({ error: 'Empty response from Claude. Try again.' });
-  }
-
-  // ── Step 2: Find contacts — Tavily finds LinkedIn profiles, Prospeo enriches emails
-  let finalResult = rawResult;
-
-  if (tavilyKey && prospeoKey) {
-    try {
-      const parsed   = parseClaudeJSON(rawResult);
-      const titles   = parsed?.decisionMakers?.titles || [];
-      console.log('[Contacts] Titles to search:', titles);
-      const contacts = titles.length > 0
-        ? await findContacts(tavilyKey, prospeoKey, companyName.trim(), titles)
-        : [];
-
-      console.log('[Contacts] Found:', contacts.length, JSON.stringify(contacts));
-      parsed.foundContacts = contacts;
-      finalResult = JSON.stringify(parsed);
-    } catch (contactErr) {
-      console.error('[Contacts] Failed, returning kit without contacts:', contactErr.message);
+    if (mode === 'discover') {
+      return await handleDiscoverMode(req, res, apiKey, prospeoKey);
     }
-  } else {
-    console.warn('[Contacts] TAVILY_API_KEY or PROSPEO_API_KEY not set — skipping contact search.');
+    return await handleJobMode(req, res, apiKey, prospeoKey);
+  } catch (networkErr) {
+    console.error('Unexpected error:', networkErr);
+    return res.status(502).json({ error: 'Something went wrong reaching our services. Try again in a moment.' });
   }
-
-  return res.status(200).json({ result: finalResult });
 };

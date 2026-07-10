@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Sidedoor &mdash; Skip the line. Land the role.</title>
-  <meta name="description" content="Bypass the ATS black hole. Get the right decision-maker targets, LinkedIn instructions, and a ready-to-send 3-email cold sequence &mdash; tailored to your job application." />
+  <meta name="description" content="Bypass the ATS black hole. Get real decision-maker targets, real contacts, and a ready-to-send cold email sequence &mdash; whether you have a job posting or just a CV." />
 
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -51,6 +51,8 @@
       -webkit-font-smoothing: antialiased;
       overflow-x: hidden;
     }
+
+    ::selection { background: var(--accent); color: #060606; }
 
     /* ─── Background grid ─────────────────────────────────────────── */
     body::before {
@@ -159,7 +161,21 @@
     .hero-copy {
       padding: 0 0 52px;
       border-bottom: 1px solid var(--border);
-      margin-bottom: 48px;
+      margin-bottom: 40px;
+      position: relative;
+    }
+
+    .hero-copy::before {
+      content: '';
+      position: absolute;
+      top: -120px;
+      left: -14%;
+      width: 460px;
+      height: 460px;
+      background: radial-gradient(circle, var(--accent-glow) 0%, transparent 68%);
+      filter: blur(30px);
+      pointer-events: none;
+      z-index: -1;
     }
 
     .hero-stat {
@@ -192,6 +208,43 @@
       line-height: 2;
       max-width: 560px;
       opacity: 0.8;
+      transition: opacity 0.15s;
+    }
+
+    /* ─── Mode Toggle ─────────────────────────────────────────────── */
+    .mode-toggle {
+      display: flex;
+      gap: 2px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 4px;
+      margin-bottom: 44px;
+    }
+
+    .mode-btn {
+      flex: 1;
+      padding: 15px 16px;
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 0.74rem;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      transition: color 0.18s, background 0.18s;
+      text-align: center;
+    }
+
+    .mode-btn:hover { color: var(--text); }
+
+    .mode-btn.active {
+      background: var(--accent);
+      color: #060606;
+      font-weight: 700;
+    }
+
+    @media (max-width: 560px) {
+      .mode-toggle { flex-direction: column; }
     }
 
     /* ─── Section Labels ──────────────────────────────────────────── */
@@ -531,6 +584,14 @@
 
     #output-section.show { display: flex; }
 
+    #job-output,
+    #discover-output,
+    #opportunities-list {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
     .output-header {
       display: flex;
       align-items: center;
@@ -577,7 +638,10 @@
       opacity: 0;
       transform: translateY(12px);
       animation: card-in 0.4s ease forwards;
+      transition: border-color 0.2s;
     }
+
+    .output-card:hover { border-color: var(--border-hi); }
 
     .output-card:nth-child(2) { animation-delay: 0ms; }
     .output-card:nth-child(3) { animation-delay: 80ms; }
@@ -803,7 +867,7 @@
       padding: 14px 16px;
     }
 
-    /* ─── Found Contacts (Card 05) ───────────────────────────────── */
+    /* ─── Found Contacts ──────────────────────────────────────────── */
     .contacts-list {
       display: flex;
       flex-direction: column;
@@ -888,6 +952,34 @@
       margin: 0;
     }
 
+    /* ─── Opportunity Cards (discover mode) ──────────────────────── */
+    .opportunity-card .card-head {
+      border-left: 2px solid var(--accent);
+    }
+
+    .opportunity-card .card-title {
+      color: var(--text);
+      font-size: 0.78rem;
+      letter-spacing: 0.06em;
+      text-transform: none;
+    }
+
+    .opportunity-domain {
+      font-size: 0.62rem;
+      color: var(--muted-dim);
+      letter-spacing: 0.08em;
+    }
+
+    .opportunity-section-label {
+      font-size: 0.62rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin: 22px 0 12px;
+    }
+
+    .opportunity-section-label:first-of-type { margin-top: 20px; }
+
     /* ─── Toast ───────────────────────────────────────────────────── */
     #toast {
       position: fixed;
@@ -967,15 +1059,21 @@
   <div class="hero-copy">
     <div class="hero-stat"><span class="hl">98%</span> of job applications go nowhere.</div>
     <div class="hero-hook">Not because you&rsquo;re unqualified. <em>Because no one saw them.</em></div>
-    <p class="hero-desc">Sidedoor helps you skip the queue. Paste the job description and your CV. We&rsquo;ll tell you who to contact directly, how to find them, and give you a 3-email sequence written and ready to send.</p>
+    <p class="hero-desc" id="hero-desc">Sidedoor helps you skip the queue. Paste the job description and your CV. We&rsquo;ll tell you who to contact directly, how to find them, and give you a 3-email sequence written and ready to send.</p>
+  </div>
+
+  <!-- ─── Mode Toggle ────────────────────────────────────────────── -->
+  <div class="mode-toggle">
+    <button type="button" class="mode-btn active" id="mode-job">I have a job in mind</button>
+    <button type="button" class="mode-btn" id="mode-discover">Show me who needs me</button>
   </div>
 
   <!-- ─── Form ────────────────────────────────────────────────────── -->
   <div class="form-section">
-    <div class="section-label">01 &mdash; Mission Brief</div>
+    <div class="section-label" id="section-label">01 &mdash; Mission Brief</div>
 
     <!-- Job Description -->
-    <div class="form-group">
+    <div class="form-group" id="field-job-desc">
       <label class="form-label" for="job-desc">Job Description</label>
       <textarea id="job-desc" placeholder="Paste the full job description here &mdash; the more detail, the better the output..."></textarea>
     </div>
@@ -1007,7 +1105,7 @@
     </div>
 
     <!-- Company Info -->
-    <div class="form-row">
+    <div class="form-row" id="field-company">
       <div class="form-group" style="margin-bottom:0">
         <label class="form-label" for="company-name">Company Name</label>
         <input type="text" id="company-name" placeholder="e.g. Stripe, Notion, Figma&hellip;" />
@@ -1041,7 +1139,7 @@
   <div id="output-section">
 
     <div class="output-header">
-      <div class="output-title">YOUR KIT</div>
+      <div class="output-title" id="output-title">YOUR KIT</div>
       <button id="download-btn">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -1052,58 +1150,89 @@
       </button>
     </div>
 
-    <!-- Decision Makers -->
-    <div class="output-card">
-      <div class="card-head">
-        <span class="card-num">01</span>
-        <span class="card-title">Decision-Maker Targets</span>
+    <!-- ─── Job Mode Output ────────────────────────────────────────── -->
+    <div id="job-output">
+
+      <!-- Decision Makers -->
+      <div class="output-card">
+        <div class="card-head">
+          <span class="card-num">01</span>
+          <span class="card-title">Decision-Maker Targets</span>
+        </div>
+        <div class="card-body" id="body-decision-makers"></div>
       </div>
-      <div class="card-body" id="body-decision-makers"></div>
+
+      <!-- LinkedIn -->
+      <div class="output-card">
+        <div class="card-head">
+          <span class="card-num">02</span>
+          <span class="card-title">LinkedIn Search Instructions</span>
+        </div>
+        <div class="card-body" id="body-linkedin"></div>
+      </div>
+
+      <!-- Found Contacts -->
+      <div class="output-card" id="card-contacts" style="display:none">
+        <div class="card-head">
+          <span class="card-num">03</span>
+          <span class="card-title">Real Contacts Found</span>
+        </div>
+        <div class="card-body" id="body-contacts"></div>
+      </div>
+
+      <!-- Email Tools -->
+      <div class="output-card">
+        <div class="card-head">
+          <span class="card-num">04</span>
+          <span class="card-title">Email Finder Tools</span>
+        </div>
+        <div class="card-body" id="body-email-tools"></div>
+      </div>
+
+      <!-- Email Sequence -->
+      <div class="output-card">
+        <div class="card-head">
+          <span class="card-num">05</span>
+          <span class="card-title">3-Email Cold Sequence</span>
+        </div>
+        <div class="card-body" id="body-emails"></div>
+      </div>
+
+      <!-- Cover Letter -->
+      <div class="output-card">
+        <div class="card-head">
+          <span class="card-num">06</span>
+          <span class="card-title">Cover Letter</span>
+        </div>
+        <div class="card-body" id="body-cover-letter"></div>
+      </div>
+
     </div>
 
-    <!-- LinkedIn -->
-    <div class="output-card">
-      <div class="card-head">
-        <span class="card-num">02</span>
-        <span class="card-title">LinkedIn Search Instructions</span>
-      </div>
-      <div class="card-body" id="body-linkedin"></div>
-    </div>
+    <!-- ─── Discover Mode Output ───────────────────────────────────── -->
+    <div id="discover-output" style="display:none">
 
-    <!-- Found Contacts -->
-    <div class="output-card" id="card-contacts" style="display:none">
-      <div class="card-head">
-        <span class="card-num">03</span>
-        <span class="card-title">Real Contacts Found</span>
+      <!-- Persona -->
+      <div class="output-card">
+        <div class="card-head">
+          <span class="card-num">01</span>
+          <span class="card-title">Your Profile</span>
+        </div>
+        <div class="card-body" id="body-persona"></div>
       </div>
-      <div class="card-body" id="body-contacts"></div>
-    </div>
 
-    <!-- Email Tools -->
-    <div class="output-card">
-      <div class="card-head">
-        <span class="card-num">04</span>
-        <span class="card-title">Email Finder Tools</span>
-      </div>
-      <div class="card-body" id="body-email-tools"></div>
-    </div>
+      <!-- One card per discovered opportunity, injected by JS -->
+      <div id="opportunities-list"></div>
 
-    <!-- Email Sequence -->
-    <div class="output-card">
-      <div class="card-head">
-        <span class="card-num">05</span>
-        <span class="card-title">3-Email Cold Sequence</span>
+      <!-- Email Tools (static, shared fallback) -->
+      <div class="output-card">
+        <div class="card-head">
+          <span class="card-num" id="tools-card-num">--</span>
+          <span class="card-title">Email Finder Tools</span>
+        </div>
+        <div class="card-body" id="body-email-tools-discover"></div>
       </div>
-      <div class="card-body" id="body-emails"></div>
-    </div>
 
-    <!-- Cover Letter -->
-    <div class="output-card">
-      <div class="card-head">
-        <span class="card-num">06</span>
-        <span class="card-title">Cover Letter</span>
-      </div>
-      <div class="card-body" id="body-cover-letter"></div>
     </div>
 
   </div>
@@ -1137,6 +1266,7 @@ const dom = {
   loadingState:     document.getElementById('loading-state'),
   errorBanner:      document.getElementById('error-banner'),
   outputSection:    document.getElementById('output-section'),
+  outputTitle:      document.getElementById('output-title'),
   toast:            document.getElementById('toast'),
   uploadZone:       document.getElementById('upload-zone'),
   cvFile:           document.getElementById('cv-file'),
@@ -1145,12 +1275,45 @@ const dom = {
   uploadClear:      document.getElementById('upload-clear'),
   parsingIndicator: document.getElementById('parsing-indicator'),
   downloadBtn:      document.getElementById('download-btn'),
+  modeJobBtn:       document.getElementById('mode-job'),
+  modeDiscoverBtn:  document.getElementById('mode-discover'),
+  fieldJobDesc:     document.getElementById('field-job-desc'),
+  fieldCompany:     document.getElementById('field-company'),
+  sectionLabel:     document.getElementById('section-label'),
+  heroDesc:         document.getElementById('hero-desc'),
+  jobOutput:        document.getElementById('job-output'),
+  discoverOutput:   document.getElementById('discover-output'),
 };
 
 const state = {
   isLoading: false,
   outputData: null,
+  mode: 'job',
 };
+
+const STATIC_EMAIL_TOOLS = [
+  { name: 'Hunter.io',   description: 'Best for finding emails by company domain. Enter the company website and get a verified list.', note: 'Best free tier — 25 free searches/month' },
+  { name: 'Apollo.io',   description: 'Find and verify emails plus see LinkedIn profile and company data in one place.', note: 'Free tier — 50 email credits/month' },
+  { name: 'RocketReach', description: 'Strong backup, especially for executives and hard-to-find contacts.', note: '5 free lookups/month' },
+  { name: 'Snov.io',     description: 'Email finder and verifier with a Chrome extension for LinkedIn prospecting.', note: '50 free credits on signup' },
+];
+
+// ─── Mode Switching ─────────────────────────────────────────────────
+function setMode(mode) {
+  state.mode = mode;
+  dom.modeJobBtn.classList.toggle('active', mode === 'job');
+  dom.modeDiscoverBtn.classList.toggle('active', mode === 'discover');
+  dom.fieldJobDesc.style.display = mode === 'job' ? '' : 'none';
+  dom.fieldCompany.style.display = mode === 'job' ? '' : 'none';
+  dom.sectionLabel.textContent = mode === 'job' ? '01 — Mission Brief' : '01 — Your Profile';
+  dom.generateBtn.textContent = mode === 'job' ? 'Generate Outreach Kit →' : 'Find My Opportunities →';
+  dom.heroDesc.textContent = mode === 'job'
+    ? 'Sidedoor helps you skip the queue. Paste the job description and your CV. We’ll tell you who to contact directly, how to find them, and give you a 3-email sequence written and ready to send.'
+    : 'Don’t have a job posting yet? Upload just your CV. We’ll work out who you are professionally, find real companies growing fast in your space, and hand you contacts and a pitch email for each one.';
+  clearError();
+  dom.outputSection.classList.remove('show');
+  dom.regenerateBtn.classList.remove('show');
+}
 
 // ─── CV Upload & Parsing ──────────────────────────────────────────
 function showUploadSuccess(filename) {
@@ -1262,26 +1425,36 @@ dom.uploadClear.addEventListener('click', () => {
 
 // ─── Validation ───────────────────────────────────────────────────
 function validate() {
-  if (!dom.jobDesc.value.trim())     return 'Paste the job description to continue.';
-  if (!dom.background.value.trim())  return 'Add your background and skills \u2014 upload your CV or type it in.';
-  if (!dom.companyName.value.trim()) return 'Enter the company name to continue.';
-  if (!dom.companySize.value)        return 'Select a company size to continue.';
+  if (!dom.background.value.trim()) return 'Add your background and skills — upload your CV or type it in.';
+  if (state.mode === 'job') {
+    if (!dom.jobDesc.value.trim())     return 'Paste the job description to continue.';
+    if (!dom.companyName.value.trim()) return 'Enter the company name to continue.';
+    if (!dom.companySize.value)        return 'Select a company size to continue.';
+  }
   return null;
 }
 
 // ─── API Call ─────────────────────────────────────────────────────
 async function callAPI() {
+  const body = state.mode === 'job'
+    ? {
+        mode:        'job',
+        jobDesc:     dom.jobDesc.value.trim(),
+        background:  dom.background.value.trim(),
+        companyName: dom.companyName.value.trim(),
+        companySize: dom.companySize.value,
+      }
+    : {
+        mode:       'discover',
+        background: dom.background.value.trim(),
+      };
+
   let response;
   try {
     response = await fetch('/api/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jobDesc:     dom.jobDesc.value.trim(),
-        background:  dom.background.value.trim(),
-        companyName: dom.companyName.value.trim(),
-        companySize: dom.companySize.value,
-      }),
+      body: JSON.stringify(body),
     });
   } catch (err) {
     throw new Error('Could not reach the server. Check your connection and try again.');
@@ -1308,6 +1481,11 @@ function parseResponse(raw) {
 }
 
 function validateStructure(d) {
+  if (state.mode === 'discover') {
+    if (!d.persona?.summary) throw new Error('Response missing persona analysis. Click Regenerate.');
+    if (!Array.isArray(d.opportunities)) throw new Error('Response missing opportunities. Click Regenerate.');
+    return;
+  }
   for (const s of ['decisionMakers', 'linkedInInstructions', 'emailFinderTools', 'emailSequence']) {
     if (!d[s]) throw new Error(`Response missing section: ${s}. Click Regenerate.`);
   }
@@ -1354,7 +1532,7 @@ function renderLinkedIn(li) {
   `;
 }
 
-function renderEmailTools(tools) {
+function buildEmailToolsHTML(tools) {
   const rows = tools.map(t => `
     <div class="tool-row">
       <div class="tool-name">${esc(t.name)}</div>
@@ -1364,18 +1542,19 @@ function renderEmailTools(tools) {
       </div>
     </div>
   `).join('');
-  document.getElementById('body-email-tools').innerHTML = `<div class="tools-list">${rows}</div>`;
+  return `<div class="tools-list">${rows}</div>`;
 }
 
-function renderEmailSequence(seq) {
-  const emailDefs = [
-    { key: 'email1' },
-    { key: 'email2' },
-    { key: 'email3' },
-  ];
+function renderEmailTools(tools) {
+  document.getElementById('body-email-tools').innerHTML = buildEmailToolsHTML(tools);
+}
 
-  const cards = emailDefs.map(({ key }) => {
+// Renders an email sequence into any container element — reused for the
+// single job-mode sequence and for each per-company sequence in discover mode.
+function renderEmailSequenceInto(container, seq) {
+  const cards = ['email1', 'email2', 'email3'].map(key => {
     const e = seq[key];
+    if (!e) return '';
     return `
       <div class="email-card">
         <div class="email-top">
@@ -1388,19 +1567,24 @@ function renderEmailSequence(seq) {
     `;
   }).join('');
 
-  document.getElementById('body-emails').innerHTML = `
+  container.innerHTML = `
     <div class="email-cards">${cards}</div>
-    <div class="cadence-note">${esc(seq.cadenceNote)}</div>
+    ${seq.cadenceNote ? `<div class="cadence-note">${esc(seq.cadenceNote)}</div>` : ''}
   `;
 
   // Read email content directly from the seq object (not from HTML attributes)
   // HTML attributes normalize whitespace, stripping the \n\n paragraph breaks
-  document.querySelectorAll('.copy-btn').forEach(btn => {
+  container.querySelectorAll('.copy-btn').forEach(btn => {
     const email = seq[btn.dataset.key];
+    if (!email) return;
     btn.addEventListener('click', () => {
       copyToClipboard(`Subject: ${email.subject}\n\n${email.body}`, btn);
     });
   });
+}
+
+function renderEmailSequence(seq) {
+  renderEmailSequenceInto(document.getElementById('body-emails'), seq);
 }
 
 function renderCoverLetter(cl) {
@@ -1423,14 +1607,11 @@ function renderCoverLetter(cl) {
   });
 }
 
-function renderFoundContacts(contacts) {
-  const card = document.getElementById('card-contacts');
-  const body = document.getElementById('body-contacts');
-
-  card.style.display = '';
-
+// Renders a contact list into any container element — reused for the single
+// job-mode contact card and for each per-company contact list in discover mode.
+function renderContactsInto(container, contacts) {
   if (!contacts || contacts.length === 0) {
-    body.innerHTML = `<p class="contacts-empty">No contacts found for this company. Search manually on LinkedIn using the titles above, then use Hunter.io or Apollo.io to find their email.</p>`;
+    container.innerHTML = `<p class="contacts-empty">No contacts found yet. Search manually on LinkedIn using the titles above, then use Hunter.io or Apollo.io to find their email.</p>`;
     return;
   }
 
@@ -1451,21 +1632,94 @@ function renderFoundContacts(contacts) {
     </div>
   `).join('');
 
-  body.innerHTML = `<div class="contacts-list">${rows}</div>`;
+  container.innerHTML = `<div class="contacts-list">${rows}</div>`;
 
-  body.querySelectorAll('.contact-copy-btn').forEach(btn => {
+  container.querySelectorAll('.contact-copy-btn').forEach(btn => {
     btn.addEventListener('click', () => copyToClipboard(btn.dataset.email, btn));
   });
 }
 
+function renderFoundContacts(contacts) {
+  const card = document.getElementById('card-contacts');
+  card.style.display = '';
+  renderContactsInto(document.getElementById('body-contacts'), contacts);
+}
+
+// ─── Discover Mode Rendering ────────────────────────────────────────
+function renderPersona(persona) {
+  const chips = (persona.titles || []).map(t => `<div class="title-chip">${esc(t)}</div>`).join('');
+  document.getElementById('body-persona').innerHTML = `
+    <p class="guidance-text" style="border:none;padding-left:0;margin-bottom:16px;">${esc(persona.summary)}</p>
+    ${chips ? `<div class="title-chips">${chips}</div>` : ''}
+  `;
+}
+
+function renderOpportunities(opportunities) {
+  const container = document.getElementById('opportunities-list');
+
+  if (!opportunities || !opportunities.length) {
+    container.innerHTML = `
+      <div class="output-card">
+        <div class="card-body">
+          <p class="contacts-empty">Couldn't find fast-growing companies matching your background right now. Try adding more detail about your industry experience and click Regenerate.</p>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = opportunities.map((o, i) => `
+    <div class="output-card opportunity-card">
+      <div class="card-head">
+        <span class="card-num">${String(i + 2).padStart(2, '0')}</span>
+        <span class="card-title">${esc(o.company)}${o.domain ? `<span class="opportunity-domain"> &middot; ${esc(o.domain)}</span>` : ''}</span>
+      </div>
+      <div class="card-body">
+        <p class="guidance-text">${esc(o.whyThisCompany)}</p>
+        ${(o.titles || []).length ? `<div class="title-chips" style="margin-top:16px;">${o.titles.map(t => `<div class="title-chip">${esc(t)}</div>`).join('')}</div>` : ''}
+        <div class="opportunity-section-label">Contacts</div>
+        <div class="opp-contacts" data-idx="${i}"></div>
+        ${o.emailSequence ? `<div class="opportunity-section-label">Pitch Sequence</div><div class="opp-emails" data-idx="${i}"></div>` : ''}
+      </div>
+    </div>
+  `).join('');
+
+  opportunities.forEach((o, i) => {
+    renderContactsInto(container.querySelector(`.opp-contacts[data-idx="${i}"]`), o.contacts);
+    if (o.emailSequence) {
+      renderEmailSequenceInto(container.querySelector(`.opp-emails[data-idx="${i}"]`), o.emailSequence);
+    }
+  });
+
+  const toolsNum = document.getElementById('tools-card-num');
+  if (toolsNum) toolsNum.textContent = String(opportunities.length + 2).padStart(2, '0');
+}
+
 function renderOutput(data) {
   state.outputData = data;
-  renderDecisionMakers(data.decisionMakers);
-  renderLinkedIn(data.linkedInInstructions);
-  renderEmailTools(data.emailFinderTools);
-  renderEmailSequence(data.emailSequence);
-  renderFoundContacts(data.foundContacts);
-  if (data.coverLetter) renderCoverLetter(data.coverLetter);
+
+  if (state.mode === 'discover') {
+    dom.outputTitle.textContent = 'YOUR OPPORTUNITIES';
+    dom.jobOutput.style.display = 'none';
+    dom.discoverOutput.style.display = '';
+    dom.downloadBtn.style.display = 'none';
+
+    renderPersona(data.persona);
+    renderOpportunities(data.opportunities);
+    document.getElementById('body-email-tools-discover').innerHTML = buildEmailToolsHTML(STATIC_EMAIL_TOOLS);
+  } else {
+    dom.outputTitle.textContent = 'YOUR KIT';
+    dom.jobOutput.style.display = '';
+    dom.discoverOutput.style.display = 'none';
+    dom.downloadBtn.style.display = '';
+
+    renderDecisionMakers(data.decisionMakers);
+    renderLinkedIn(data.linkedInInstructions);
+    renderEmailTools(data.emailFinderTools);
+    renderEmailSequence(data.emailSequence);
+    renderFoundContacts(data.foundContacts);
+    if (data.coverLetter) renderCoverLetter(data.coverLetter);
+  }
 
   dom.outputSection.querySelectorAll('.output-card').forEach(c => {
     c.style.animation = 'none';
@@ -1480,8 +1734,9 @@ function renderOutput(data) {
   });
 }
 
-// ─── PDF Download ─────────────────────────────────────────────────
+// ─── PDF Download (job mode only) ──────────────────────────────────
 function downloadPDF() {
+  if (state.mode !== 'job') return;
   const data = state.outputData;
   if (!data) return;
 
@@ -1556,7 +1811,7 @@ function downloadPDF() {
 
   // ── Section 1: Decision Makers ──
   addSectionTitle('01', 'Decision-Maker Targets');
-  addBodyText(data.decisionMakers.titles.join('  \u00B7  '), 9, ink);
+  addBodyText(data.decisionMakers.titles.join('  ·  '), 9, ink);
   addBodyText(data.decisionMakers.guidance, 8.5, mid);
   y += 4;
 
@@ -1646,9 +1901,9 @@ function downloadPDF() {
   addSectionTitle('05', '3-Email Cold Sequence');
 
   const emails = [
-    { label: 'EMAIL 1 \u2014 THE DIRECT APPLICATION', data: data.emailSequence.email1 },
-    { label: 'EMAIL 2 \u2014 THE NEW ANGLE',           data: data.emailSequence.email2 },
-    { label: 'EMAIL 3 \u2014 THE FINAL NOTE',          data: data.emailSequence.email3 },
+    { label: 'EMAIL 1 — THE DIRECT APPLICATION', data: data.emailSequence.email1 },
+    { label: 'EMAIL 2 — THE NEW ANGLE',           data: data.emailSequence.email2 },
+    { label: 'EMAIL 3 — THE FINAL NOTE',          data: data.emailSequence.email3 },
   ];
 
   emails.forEach(({ label, data: email }) => {
@@ -1763,7 +2018,8 @@ function setLoading(on) {
   state.isLoading = on;
   dom.loadingState.classList.toggle('show', on);
   dom.generateBtn.disabled = on;
-  dom.generateBtn.textContent = on ? 'Building kit\u2026' : 'Generate Outreach Kit \u2192';
+  const idleLabel = state.mode === 'discover' ? 'Find My Opportunities →' : 'Generate Outreach Kit →';
+  dom.generateBtn.textContent = on ? 'Building kit…' : idleLabel;
   dom.regenerateBtn.disabled = on;
   if (on) clearError();
 }
@@ -1808,6 +2064,8 @@ document.addEventListener('DOMContentLoaded', () => {
   dom.regenerateBtn.addEventListener('click', handleGenerate);
   dom.downloadBtn.addEventListener('click', downloadPDF);
   dom.companyName.addEventListener('keydown', e => { if (e.key === 'Enter') handleGenerate(); });
+  dom.modeJobBtn.addEventListener('click', () => setMode('job'));
+  dom.modeDiscoverBtn.addEventListener('click', () => setMode('discover'));
 });
 </script>
 

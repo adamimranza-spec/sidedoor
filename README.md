@@ -2,17 +2,21 @@
 
 **Skip the line. Land the role.**
 
-Sidedoor helps job seekers bypass the ATS black hole by going directly to decision-makers. Paste a job description and your background, and get back a complete outreach kit: the right people to target, how to find them on LinkedIn, which tools to use to get their email, and a 3-step cold email sequence ready to send.
+Sidedoor helps job seekers bypass the ATS black hole by going directly to decision-makers. Two ways to use it:
+
+- **Have a job posting?** Paste the job description and your background, and get back a complete outreach kit: the right people to target, how to find them on LinkedIn, which tools to use to get their email, and a 3-step cold email sequence ready to send.
+- **Just have a CV?** Upload it and Sidedoor figures out your professional persona, finds real, fast-growing companies in your space, and gives you real contacts plus a pitch email sequence for each one — before you've found a job posting at all.
 
 ---
 
 ## How to deploy (step by step, no coding experience needed)
 
-You need three things before you start:
+You need four things before you start:
 
 1. A free **GitHub** account — [github.com](https://github.com)
 2. A free **Vercel** account — [vercel.com](https://vercel.com)
 3. A **Claude API key** from Anthropic — [console.anthropic.com](https://console.anthropic.com)
+4. A **Prospeo API key** — [prospeo.io](https://prospeo.io) (powers contact search and company discovery; a free trial is available)
 
 This takes about 15 minutes total.
 
@@ -25,6 +29,14 @@ This takes about 15 minutes total.
 3. Click **Create Key**
 4. Give it a name like `sidedoor`
 5. Copy the key — it starts with `sk-ant-`
+
+### Step 1b — Get your Prospeo API key
+
+1. Go to [prospeo.io](https://prospeo.io) and sign up or log in
+2. Find your API key in account settings
+3. Copy it — you'll need it in Step 4
+
+> Without this key: job mode still works but won't find real contacts, and discover mode (the CV-only "who needs me" flow) won't work at all — it depends entirely on Prospeo to find target companies.
 6. Save it somewhere safe (a notes app is fine). You'll need it in Step 4
 
 > **Note:** The Claude API is paid, but very cheap. A $5 credit will handle hundreds of outreach kits. You won't be charged until you add a payment method and exceed the free tier.
@@ -64,9 +76,9 @@ Vercel will build and deploy the project. This takes about 30 seconds.
 
 ---
 
-### Step 4 — Add your Claude API key
+### Step 4 — Add your API keys
 
-This is the most important step. The API key tells Vercel how to connect to Claude. It's stored securely on the server — users of your app will never see it.
+This is the most important step. These keys tell Vercel how to connect to Claude and Prospeo. They're stored securely on the server — users of your app will never see them.
 
 1. In your Vercel project dashboard, click **Settings** (in the top navigation)
 2. Click **Environment Variables** in the left sidebar
@@ -74,6 +86,7 @@ This is the most important step. The API key tells Vercel how to connect to Clau
 4. In the **Value** field, paste your API key (the one starting with `sk-ant-` from Step 1)
 5. Make sure **Production**, **Preview**, and **Development** are all checked
 6. Click **Save**
+7. Repeat steps 3–6 for a second variable: **Key** = `PROSPEO_API_KEY`, **Value** = your Prospeo key from Step 1b
 
 ---
 
@@ -113,13 +126,16 @@ If you want a custom URL like `sidedoor.yourdomain.com`:
 ## Troubleshooting
 
 **"The app is not configured yet"**
-The API key environment variable wasn't added. Go back to Step 4 and make sure you used the exact name `ANTHROPIC_API_KEY`.
+An environment variable wasn't added. Go back to Step 4 and make sure you used the exact names `ANTHROPIC_API_KEY` and `PROSPEO_API_KEY`.
 
 **"Invalid API key"**
-The key was entered incorrectly. Go to Vercel → Settings → Environment Variables, delete the existing `ANTHROPIC_API_KEY` entry, and re-add it by pasting the key again carefully.
+A key was entered incorrectly. Go to Vercel → Settings → Environment Variables, delete the existing entry, and re-add it by pasting the key again carefully.
 
 **"Rate limit reached"**
 You've hit Anthropic's rate limit. Wait 30–60 seconds and try again.
+
+**Kit generates but "Real Contacts Found" is always empty, or "Show me who needs me" mode fails**
+`PROSPEO_API_KEY` is missing or invalid — check Step 4. You can also check the Vercel function logs (Deployments → your latest deployment → Functions) for lines starting with `[Prospeo]` to see what went wrong.
 
 **The page loads but nothing happens when I click Generate**
 Open your browser's developer console (press F12 → Console tab) and look for any red error messages. Share these if you need help debugging.
@@ -146,4 +162,4 @@ sidedoor/
 
 ## Security note
 
-Your Claude API key is **never** exposed to users of the app. It lives only in Vercel's environment variables and is accessed server-side by `api/generate.js`. The frontend (`index.html`) only ever calls `/api/generate` — it has no knowledge of the key.
+Your Claude and Prospeo API keys are **never** exposed to users of the app. They live only in Vercel's environment variables and are accessed server-side by `api/generate.js`. The frontend (`index.html`) only ever calls `/api/generate` — it has no knowledge of either key.

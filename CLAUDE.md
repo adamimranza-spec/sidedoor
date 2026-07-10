@@ -1,44 +1,78 @@
 # SIDEDOOR — PROJECT BRAIN
 
 ## What This Project Is
-Sidedoor is a web app that helps job seekers bypass the ATS black hole by going directly to decision-makers. The user pastes a job description + their background, and gets back a complete outreach kit: the right decision-maker titles to target, LinkedIn search instructions, email finder tool recommendations, and a 3-step cold email sequence.
+Sidedoor is a web app that helps job seekers bypass the ATS black hole by going directly to decision-makers. It has two modes:
+
+- **Job mode** — the user pastes a job description + their background, and gets back a complete outreach kit: the right decision-maker titles to target, LinkedIn search instructions, real contacts (found automatically), email finder tool recommendations, and a 3-step cold email sequence.
+- **Discover mode** — the user uploads just their CV, no job posting required. Sidedoor infers their professional persona, finds 2-3 real, fast-growing companies in a matching industry (using real growth/funding signals, not guesses), finds real contacts at each, and writes a pitch email sequence per company grounded in that company's actual signal.
 
 The cold email system is based on a proven framework (200+ meetings booked, 50K+ emails sent, 6%+ reply rates). The output must sound human, specific, and intelligent — never like a template.
 
 ---
 
 ## Tech Stack
-- Frontend: Single HTML file (HTML + CSS + JavaScript)
-- AI: Claude API (claude-sonnet-4-5 via fetch calls from the browser)
-- Hosting: Vercel (static deploy)
-- No backend. No database. No login required for v1.
+- Frontend: Single HTML file (`index.html` — HTML + CSS + JavaScript, no framework)
+- Backend: `api/generate.js` — a Vercel serverless function. The frontend never talks to Claude or Prospeo directly; it only calls `/api/generate`.
+- AI: Claude API (`claude-sonnet-4-5`), called server-side only
+- Contact & company discovery: Prospeo (`search-company`, `search-person`, `enrich-person`) — one provider for the whole pipeline. No Tavily, no Serper, no other search provider.
+- Hosting: Vercel (static frontend + one serverless function)
+- No database. No login.
 
 ---
 
 ## File Structure
 ```
 sidedoor/
-├── index.html          # The entire app (UI + logic)
-├── CLAUDE.md           # This file
-└── README.md           # Setup instructions
+├── index.html          # The entire frontend (UI + logic)
+├── api/
+│   └── generate.js     # Serverless function — Claude + Prospeo pipeline, both modes
+├── vercel.json          # maxDuration config for the function
+├── package.json          # Node engine version
+├── CLAUDE.md            # This file
+└── README.md            # Setup instructions
 ```
 
 ---
 
 ## What the App Does (User Flow)
 
-1. User lands on the page — clean, single-screen interface
+### Job mode
+1. User lands on the page and picks "I have a job in mind" (default)
 2. User fills in 3 inputs:
    - Job Description (paste full text)
-   - Their Background / Skills (paste CV or short bio)
+   - Their Background / Skills (paste CV or short bio, or upload a PDF/DOCX)
    - Company Name + Company Size (dropdown: <50, 50-200, 200+)
 3. User clicks "Generate Outreach Kit"
+
+### Discover mode
+1. User picks "Show me who needs me"
+2. User uploads or pastes just their background/CV — no job description, no target company
+3. User clicks "Find My Opportunities"
+4. Sidedoor returns a persona summary, 2-3 real target companies with real growth signals, contacts at each, and a pitch email sequence per company
 4. App calls Claude API with a structured prompt
 5. Output appears on the same page with 4 sections:
    - Decision-Maker Titles (who to target)
    - LinkedIn Instructions (how to find them)
    - Email Finder Tools (how to get their email)
    - 3-Step Cold Email Sequence (ready to send)
+
+---
+
+## CONTACT & COMPANY DISCOVERY PIPELINE (Prospeo)
+
+Everything that isn't Claude's writing runs through Prospeo. There is no separate search provider.
+
+**Job mode** — `search-person` filtered by `company.names` + `person_job_title` finds real people matching Claude's suggested decision-maker titles at the named company. `enrich-person` (given a `linkedin_url`) turns a match into a verified email. This replaced an earlier Tavily-based Google-scrape approach — `search-person` is a structured database query against Prospeo's own data, not a scrape, so match quality is higher.
+
+**Discover mode** — two Claude calls sandwich the Prospeo calls, because Claude can't write a grounded pitch about a company it doesn't know about yet:
+1. Claude call #1 reads the CV and returns a persona summary, 2-3 target industries (constrained to Prospeo's `company_industry` enum — see `INDUSTRY_ENUM` in `api/generate.js`), and target decision-maker titles.
+2. `search-company` filters on those industries plus a real growth signal — `company_headcount_growth` (% over 6 months) primarily, falling back to `company_funding` (raised within the last year) if the growth filter returns nothing. This is what finds "fast-growing companies," not model guesswork.
+3. `search-person` (batched across all discovered companies in one call) + `enrich-person` find real contacts at each company, capped at 2 per company to bound Prospeo credit spend.
+4. Claude call #2 receives the real companies + their real growth/funding signal + real contacts, and writes a pitch email sequence per company. The signal fact becomes the email's opening observation (e.g. "grew headcount 40% in the last 6 months") instead of a generic hook — this is the whole point of running discovery before writing, not after.
+
+**Cost guardrail**: discover mode is capped to 3 companies × 2 enriched contacts (~6 `enrich-person` calls), 1 `search-company` call, 1 batched `search-person` call, and 2 Claude calls per request — roughly the same order of magnitude as a single job-mode request.
+
+**Known risk**: the exact filter payload shapes for `search-company`/`search-person` were built from Prospeo's documentation, not a live-tested integration. Both calls log raw response counts (`console.log('[Prospeo] search-company results:', ...)` etc.) to Vercel function logs — if either endpoint underperforms in production, check those logs first before assuming the industry/growth logic is wrong.
 
 ---
 
@@ -291,14 +325,14 @@ The app output must be structured in 4 clear sections:
 ---
 
 ## Design Principles
-- Dark, modern, clean — feels premium not cheap
-- Single page, no navigation
+- Visual direction: "Premium & cinematic" — dark, editorial, closer to MasterClass/Linear than a generic SaaS form. Evolve the existing dark/lime identity, don't replace it.
+- Single page, no navigation. A mode toggle ("I have a job in mind" / "Show me who needs me") switches between job mode and discover mode without leaving the page.
 - Mobile responsive
-- Fast — output appears within 3-5 seconds
+- Fast — output appears within a few seconds
 - The brand name "Sidedoor" should be prominent
-- Tagline: "Skip the line. Land the role."
-- Typography: Use Google Fonts — pair 'Syne' (headings) with 'DM Mono' (body/inputs). 
-  Import from Google Fonts CDN.
+- Tagline: "Skip the line. Land the role." (works for both modes)
+- Typography: Bebas Neue (display/headings) paired with JetBrains Mono (body/inputs), via Google Fonts CDN.
+- Design tokens: `--bg:#060606`, `--accent:#c4ff40` (electric lime) — square corners throughout, no border-radius.
 
 ---
 
@@ -312,7 +346,7 @@ The app output must be structured in 4 clear sections:
 
 ---
 
-## v1 Scope (What We Are Building Now)
+## v1 Scope (What We Built First)
 - [x] Job description input
 - [x] User background input
 - [x] Company name + size input
@@ -322,7 +356,17 @@ The app output must be structured in 4 clear sections:
 - [x] 3-email cold sequence output
 - [x] Cadence instructions
 
-## Out of Scope for v1
+## v2 Scope — Discover Mode + Redesign
+- [x] Mode toggle (job mode / discover mode)
+- [x] CV-only input flow (no job description or target company required)
+- [x] Persona + target industry inference (Claude)
+- [x] Real company discovery via growth/funding signals (Prospeo `search-company`)
+- [x] Real contact discovery per company (Prospeo `search-person` + `enrich-person`, replacing Tavily)
+- [x] Per-company pitch email sequence grounded in the real signal
+- [x] Visual redesign — Premium & cinematic direction
+- [ ] PDF export for discover mode (deferred — job mode only for now, since the variable number of companies needs its own PDF layout)
+
+## Out of Scope
 - User accounts / login
 - Saved history
 - Actual LinkedIn or email integration
