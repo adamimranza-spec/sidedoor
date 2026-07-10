@@ -23,6 +23,12 @@ const INDUSTRY_ENUM = [
   'General Wholesale', 'Spectator Sports',
 ];
 
+// Employee-count buckets used to keep discover-mode company suggestions realistic —
+// roughly 10-500 people. Big companies (Airbnb, DoorDash, HPE, etc.) can still show
+// headcount growth or funding news, but a cold pitch email is very unlikely to land
+// a hire there. Values must match Prospeo's company_headcount_range enum exactly.
+const REALISTIC_HEADCOUNT_RANGES = ['11-20', '21-50', '51-100', '101-200', '201-500'];
+
 // ─── System Prompt — Job Description Mode ────────────────────────────────────
 // This lives server-side only. Never exposed to the browser.
 const SYSTEM_PROMPT = `You are an expert job outreach strategist. You have sent over 50,000 cold emails, booked 200+ meetings, and achieved 6%+ reply rates using a specific framework. Your job is to generate a complete, personalized outreach kit for a job seeker who wants to go directly to decision-makers instead of applying through an ATS.
@@ -416,6 +422,7 @@ async function searchGrowingCompanies(prospeoKey, industries, excludeNames = [])
           page: 1,
           filters: {
             company_industry: { include: industries },
+            company_headcount_range: REALISTIC_HEADCOUNT_RANGES,
             ...extraFilters,
           },
         }),
