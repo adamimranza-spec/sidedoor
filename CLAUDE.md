@@ -66,7 +66,7 @@ Everything that isn't Claude's writing runs through Prospeo. There is no separat
 
 **Discover mode** — two Claude calls sandwich the Prospeo calls, because Claude can't write a grounded pitch about a company it doesn't know about yet:
 1. Claude call #1 reads the CV and returns a persona summary, 2-3 target industries (constrained to Prospeo's `company_industry` enum — see `INDUSTRY_ENUM` in `api/generate.js`), and target decision-maker titles.
-2. `search-company` filters on those industries, a `company_headcount_range` cap of roughly 10-500 employees (`REALISTIC_HEADCOUNT_RANGES` in `api/generate.js`), plus a real growth signal — `company_headcount_growth` (% over 6 months) primarily, falling back to `company_funding` (raised within the last year) if the growth filter returns nothing. This is what finds "fast-growing companies," not model guesswork. The size cap exists because companies like Airbnb or DoorDash can still show headcount growth or funding news, but a cold pitch email realistically has no shot there — discover mode should only ever suggest companies small enough that a direct email might actually reach a hiring decision-maker.
+2. `search-company` filters on those industries, a `company_headcount_range` cap of roughly 10-500 employees (`REALISTIC_HEADCOUNT_RANGES` in `api/generate.js`), an optional `company_location_search` filter if the user picked a target country in the UI, plus a real growth signal — `company_headcount_growth` (% over 6 months) primarily, falling back to `company_funding` (raised within the last year) if the growth filter returns nothing. This is what finds "fast-growing companies," not model guesswork. The size cap exists because companies like Airbnb or DoorDash can still show headcount growth or funding news, but a cold pitch email realistically has no shot there — discover mode should only ever suggest companies small enough that a direct email might actually reach a hiring decision-maker.
 3. `search-person` (batched across all discovered companies in one call) + `enrich-person` find real contacts at each company, capped at 2 per company to bound Prospeo credit spend.
 4. Claude call #2 receives the real companies + their real growth/funding signal + real contacts, and writes a pitch email sequence per company. The signal fact becomes the email's opening observation (e.g. "grew headcount 40% in the last 6 months") instead of a generic hook — this is the whole point of running discovery before writing, not after.
 
@@ -325,14 +325,14 @@ The app output must be structured in 4 clear sections:
 ---
 
 ## Design Principles
-- Visual direction: "Premium & cinematic" — dark, editorial, closer to MasterClass/Linear than a generic SaaS form. Evolve the existing dark/lime identity, don't replace it.
+- Visual direction: "Swiss" — light neutral surface, one deliberate accent color, hairline grid structure, numerals used as a real composition element (not decoration). Closer to a printed editorial dossier than a generic light-mode SaaS form. Superseded the earlier dark/lime "Premium & cinematic" direction — light background, no dark mode.
 - Single page, no navigation. A mode toggle ("I have a job in mind" / "Show me who needs me") switches between job mode and discover mode without leaving the page.
 - Mobile responsive
 - Fast — output appears within a few seconds
 - The brand name "Sidedoor" should be prominent
 - Tagline: "Skip the line. Land the role." (works for both modes)
-- Typography: Bebas Neue (display/headings) paired with JetBrains Mono (body/inputs), via Google Fonts CDN.
-- Design tokens: `--bg:#060606`, `--accent:#c4ff40` (electric lime) — square corners throughout, no border-radius.
+- Typography: Bebas Neue (display/headings) paired with JetBrains Mono (body/inputs), via Google Fonts CDN — kept as-is across the light redesign; only the color system changed.
+- Design tokens: `--bg:#F7F7F5`, `--surface:#FFFFFF`, `--accent:#E4002B` (Swiss Red), `--text:#14140F` — square corners throughout, no border-radius. Section and card numbers (`.section-num`, `.card-num`) are enlarged and set off with a hairline rule, doubling as the page's structural device.
 
 ---
 

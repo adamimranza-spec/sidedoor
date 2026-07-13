@@ -21,20 +21,21 @@
   <style>
     /* ─── Tokens ──────────────────────────────────────────────────── */
     :root {
-      --bg:           #060606;
-      --surface:      #0e0e0e;
-      --surface2:     #161616;
-      --border:       #1f1f1f;
-      --border-hi:    #2e2e2e;
-      --accent:       #c4ff40;
-      --accent-dim:   rgba(196,255,64,0.08);
-      --accent-glow:  rgba(196,255,64,0.15);
-      --text:         #f0f0f0;
-      --muted:        #aaa;
-      --muted-dim:    #555;
-      --err-bg:       rgba(255,70,70,0.06);
-      --err-border:   rgba(255,70,70,0.22);
-      --err-text:     #ff6b6b;
+      --bg:           #F7F7F5;
+      --surface:      #FFFFFF;
+      --surface2:     #F0F0EE;
+      --border:       #E1E1DD;
+      --border-hi:    #C7C7C2;
+      --accent:       #E4002B;
+      --accent-dim:   rgba(228,0,43,0.06);
+      --accent-glow:  rgba(228,0,43,0.14);
+      --on-accent:    #FFFFFF;
+      --text:         #14140F;
+      --muted:        #6B6B63;
+      --muted-dim:    #9D9D95;
+      --err-bg:       rgba(180,60,20,0.07);
+      --err-border:   rgba(180,60,20,0.28);
+      --err-text:     #A83A14;
       --font-display: 'Bebas Neue', sans-serif;
       --font-mono:    'JetBrains Mono', monospace;
       --max:          780px;
@@ -52,7 +53,7 @@
       overflow-x: hidden;
     }
 
-    ::selection { background: var(--accent); color: #060606; }
+    ::selection { background: var(--accent); color: var(--on-accent); }
 
     /* ─── Background grid ─────────────────────────────────────────── */
     body::before {
@@ -60,8 +61,8 @@
       position: fixed;
       inset: 0;
       background-image:
-        linear-gradient(rgba(196,255,64,0.025) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(196,255,64,0.025) 1px, transparent 1px);
+        linear-gradient(rgba(20,20,15,0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(20,20,15,0.035) 1px, transparent 1px);
       background-size: 48px 48px;
       pointer-events: none;
       z-index: 0;
@@ -90,7 +91,7 @@
       letter-spacing: 0.2em;
       text-transform: uppercase;
       color: var(--accent);
-      border: 1px solid rgba(196,255,64,0.25);
+      border: 1px solid rgba(228,0,43,0.25);
       padding: 5px 12px;
       margin-bottom: 24px;
     }
@@ -165,19 +166,6 @@
       position: relative;
     }
 
-    .hero-copy::before {
-      content: '';
-      position: absolute;
-      top: -120px;
-      left: -14%;
-      width: 460px;
-      height: 460px;
-      background: radial-gradient(circle, var(--accent-glow) 0%, transparent 68%);
-      filter: blur(30px);
-      pointer-events: none;
-      z-index: -1;
-    }
-
     .hero-stat {
       font-family: var(--font-display);
       font-size: clamp(1.8rem, 5.5vw, 2.8rem);
@@ -239,7 +227,7 @@
 
     .mode-btn.active {
       background: var(--accent);
-      color: #060606;
+      color: var(--on-accent);
       font-weight: 700;
     }
 
@@ -255,8 +243,16 @@
       color: var(--muted);
       margin-bottom: 28px;
       display: flex;
-      align-items: center;
-      gap: 12px;
+      align-items: baseline;
+      gap: 14px;
+    }
+
+    .section-label .section-num {
+      font-family: var(--font-display);
+      font-size: 1.5rem;
+      letter-spacing: 0.03em;
+      color: var(--text);
+      text-transform: none;
     }
 
     .section-label::after {
@@ -264,6 +260,7 @@
       flex: 1;
       height: 1px;
       background: var(--border);
+      align-self: center;
     }
 
     /* ─── Form ────────────────────────────────────────────────────── */
@@ -301,7 +298,7 @@
     textarea:focus,
     select:focus {
       border-color: var(--accent);
-      background: var(--surface2);
+      background: var(--surface);
       box-shadow: 0 0 0 3px var(--accent-glow), inset 0 0 0 1px var(--accent);
     }
 
@@ -324,7 +321,7 @@
       cursor: pointer;
     }
 
-    select option { background: #0e0e0e; }
+    select option { background: var(--surface); color: var(--text); }
 
     .form-row {
       display: grid;
@@ -454,7 +451,7 @@
       width: 100%;
       padding: 18px 24px;
       background: var(--accent);
-      color: #060606;
+      color: var(--on-accent);
       border: none;
       border-radius: 0;
       font-family: var(--font-display);
@@ -481,12 +478,10 @@
 
     #generate-btn:hover:not(:disabled) {
       transform: translateY(-2px);
-      box-shadow: 0 14px 40px rgba(196,255,64,0.28);
     }
 
     #generate-btn:active:not(:disabled) {
       transform: translateY(0);
-      box-shadow: 0 4px 14px rgba(196,255,64,0.18);
     }
 
     #generate-btn:disabled {
@@ -627,7 +622,7 @@
 
     #download-btn:hover {
       background: var(--accent);
-      color: #060606;
+      color: var(--on-accent);
     }
 
     #download-btn svg { width: 14px; height: 14px; flex-shrink: 0; }
@@ -655,16 +650,20 @@
     .card-head {
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      padding: 16px 22px;
+      gap: 18px;
+      padding: 14px 22px;
       border-bottom: 1px solid var(--border);
     }
 
     .card-num {
       font-family: var(--font-display);
-      font-size: 0.9rem;
+      font-size: 1.7rem;
+      line-height: 1;
       color: var(--accent);
-      letter-spacing: 0.1em;
+      letter-spacing: 0.03em;
+      flex-shrink: 0;
+      padding-right: 18px;
+      border-right: 1px solid var(--border);
     }
 
     .card-title {
@@ -672,6 +671,7 @@
       letter-spacing: 0.18em;
       text-transform: uppercase;
       color: var(--muted);
+      flex: 1;
     }
 
     .card-body { padding: 22px; }
@@ -686,7 +686,7 @@
 
     .title-chip {
       background: var(--accent-dim);
-      border: 1px solid rgba(196,255,64,0.2);
+      border: 1px solid rgba(228,0,43,0.2);
       color: var(--accent);
       font-size: 0.75rem;
       padding: 6px 14px;
@@ -813,7 +813,7 @@
       text-transform: uppercase;
       color: var(--accent);
       background: var(--accent-dim);
-      border: 1px solid rgba(196,255,64,0.2);
+      border: 1px solid rgba(228,0,43,0.2);
       padding: 3px 10px;
     }
 
@@ -987,7 +987,7 @@
       left: 50%;
       transform: translateX(-50%) translateY(20px);
       background: var(--accent);
-      color: #060606;
+      color: var(--on-accent);
       font-family: var(--font-mono);
       font-size: 0.75rem;
       font-weight: 700;
@@ -1070,7 +1070,7 @@
 
   <!-- ─── Form ────────────────────────────────────────────────────── -->
   <div class="form-section">
-    <div class="section-label" id="section-label">01 &mdash; Mission Brief</div>
+    <div class="section-label" id="section-label"><span class="section-num">01</span> Mission Brief</div>
 
     <!-- Job Description -->
     <div class="form-group" id="field-job-desc">
@@ -1119,6 +1119,27 @@
           <option value="200plus">200+</option>
         </select>
       </div>
+    </div>
+
+    <!-- Target Country (discover mode only) -->
+    <div class="form-group" id="field-country" style="display:none">
+      <label class="form-label" for="target-country">Target Country</label>
+      <select id="target-country">
+        <option value="">Any country</option>
+        <option value="United States">United States</option>
+        <option value="United Kingdom">United Kingdom</option>
+        <option value="Canada">Canada</option>
+        <option value="Ireland">Ireland</option>
+        <option value="Australia">Australia</option>
+        <option value="New Zealand">New Zealand</option>
+        <option value="Germany">Germany</option>
+        <option value="Netherlands">Netherlands</option>
+        <option value="France">France</option>
+        <option value="Spain">Spain</option>
+        <option value="India">India</option>
+        <option value="Singapore">Singapore</option>
+        <option value="United Arab Emirates">United Arab Emirates</option>
+      </select>
     </div>
 
     <!-- Error -->
@@ -1279,6 +1300,8 @@ const dom = {
   modeDiscoverBtn:  document.getElementById('mode-discover'),
   fieldJobDesc:     document.getElementById('field-job-desc'),
   fieldCompany:     document.getElementById('field-company'),
+  fieldCountry:     document.getElementById('field-country'),
+  targetCountry:    document.getElementById('target-country'),
   sectionLabel:     document.getElementById('section-label'),
   heroDesc:         document.getElementById('hero-desc'),
   jobOutput:        document.getElementById('job-output'),
@@ -1305,7 +1328,10 @@ function setMode(mode) {
   dom.modeDiscoverBtn.classList.toggle('active', mode === 'discover');
   dom.fieldJobDesc.style.display = mode === 'job' ? '' : 'none';
   dom.fieldCompany.style.display = mode === 'job' ? '' : 'none';
-  dom.sectionLabel.textContent = mode === 'job' ? '01 — Mission Brief' : '01 — Your Profile';
+  dom.fieldCountry.style.display = mode === 'discover' ? '' : 'none';
+  dom.sectionLabel.innerHTML = mode === 'job'
+    ? '<span class="section-num">01</span> Mission Brief'
+    : '<span class="section-num">01</span> Your Profile';
   dom.generateBtn.textContent = mode === 'job' ? 'Generate Outreach Kit →' : 'Find My Opportunities →';
   dom.heroDesc.textContent = mode === 'job'
     ? 'Sidedoor helps you skip the queue. Paste the job description and your CV. We’ll tell you who to contact directly, how to find them, and give you a 3-email sequence written and ready to send.'
@@ -1445,8 +1471,9 @@ async function callAPI() {
         companySize: dom.companySize.value,
       }
     : {
-        mode:       'discover',
-        background: dom.background.value.trim(),
+        mode:          'discover',
+        background:    dom.background.value.trim(),
+        targetCountry: dom.targetCountry.value,
       };
 
   let response;
@@ -1661,7 +1688,7 @@ function renderOpportunities(opportunities) {
     container.innerHTML = `
       <div class="output-card">
         <div class="card-body">
-          <p class="contacts-empty">Couldn't find fast-growing companies matching your background right now. Try adding more detail about your industry experience and click Regenerate.</p>
+          <p class="contacts-empty">Couldn't find fast-growing companies matching your background right now. Try adding more detail about your industry experience, or switch to "Any country," and click Regenerate.</p>
         </div>
       </div>
     `;

@@ -413,7 +413,7 @@ async function callClaude(apiKey, systemPrompt, userPrompt, maxTokens = 4096) {
 }
 
 // ─── Prospeo: Company Search (discover mode — finds real, fast-growing companies) ──
-async function searchGrowingCompanies(prospeoKey, industries, excludeNames = []) {
+async function searchGrowingCompanies(prospeoKey, industries, excludeNames = [], targetCountry = '') {
   async function runSearch(extraFilters) {
     const prospeoAbort = new AbortController();
     const prospeoTimeout = setTimeout(() => prospeoAbort.abort(), 10000);
@@ -427,6 +427,7 @@ async function searchGrowingCompanies(prospeoKey, industries, excludeNames = [])
           filters: {
             company_industry: { include: industries },
             company_headcount_range: REALISTIC_HEADCOUNT_RANGES,
+            ...(targetCountry ? { company_location_search: { include: [targetCountry] } } : {}),
             ...extraFilters,
           },
         }),
@@ -692,7 +693,7 @@ async function handleJobMode(req, res, apiKey, prospeoKey) {
 
 // ─── Handler: Discover Mode (CV-only, no job posting) ───────────────────────
 async function handleDiscoverMode(req, res, apiKey, prospeoKey) {
-  const { background } = req.body || {};
+  const { background, targetCountry } = req.body || {};
   if (!background) {
     return res.status(400).json({ error: 'Missing required field: background.' });
   }
@@ -724,7 +725,7 @@ async function handleDiscoverMode(req, res, apiKey, prospeoKey) {
   // Find real, fast-growing companies in the target industries
   let companies = [];
   try {
-    companies = await searchGrowingCompanies(prospeoKey, industries.length ? industries : persona.industries);
+    companies = await searchGrowingCompanies(prospeoKey, industries.length ? industries : persona.industries, [], targetCountry);
   } catch (err) {
     console.error('[Prospeo] Company discovery failed:', err.message);
   }
