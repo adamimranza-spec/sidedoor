@@ -632,6 +632,27 @@ function extractNameFromTitle(title) {
   return null;
 }
 
+// Strips common legal suffixes so "Future AI Inc." matches a LinkedIn snippet
+// that just says "Future AI" — those suffixes routinely get dropped in bios.
+function normalizeCompanyName(name) {
+  return (name || '')
+    .toLowerCase()
+    .replace(/[.,]/g, '')
+    .replace(/\b(inc|llc|ltd|co|corp|corporation|company|group|holdings)\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// A generic company name (e.g. "Future AI") makes a plain Google search unreliable —
+// it can match a profile that just happens to mention similar words, not someone who
+// actually works there. Require the company name to actually appear in the matched
+// result before trusting it, instead of accepting whatever ranked first.
+function resultMentionsCompany(result, companyName) {
+  const haystack = normalizeCompanyName(`${result.title || ''} ${result.snippet || ''}`);
+  const needle = normalizeCompanyName(companyName);
+  return needle.length > 0 && haystack.includes(needle);
+}
+
 async function searchPersonViaSerper(serperKey, companyName, titles) {
   const found = [];
   for (const title of titles.slice(0, 2)) {
@@ -654,8 +675,12 @@ async function searchPersonViaSerper(serperKey, companyName, titles) {
         const linkedinUrl = extractLinkedInUrl(r.link);
         const name = linkedinUrl ? extractNameFromTitle(r.title) : null;
         if (!linkedinUrl || !name) continue;
+        if (!resultMentionsCompany(r, companyName)) {
+          console.log('[Serper] Skipping unverified match for', companyName, '—', r.title);
+          continue;
+        }
         found.push({ linkedinUrl, name, title, company: companyName });
-        break; // one hit per title is enough
+        break; // one verified hit per title is enough
       }
     } catch (err) {
       console.error('[Serper] search error for', companyName, title, ':', err.message);
