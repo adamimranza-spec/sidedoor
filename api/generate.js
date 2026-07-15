@@ -1,12 +1,16 @@
 // api/generate.js
 // Vercel serverless function — calls Claude API and Prospeo (company/person search + email enrichment).
 // Required env vars: ANTHROPIC_API_KEY, PROSPEO_API_KEY
+// Optional env var: SERPER_API_KEY — fallback LinkedIn lookup for discover mode when Prospeo's own
+// search-person index has nothing for a company (see searchPersonViaSerper). Without it, discover
+// mode still works, just without that backfill.
 
 const ANTHROPIC_API         = 'https://api.anthropic.com/v1/messages';
 const MODEL                 = 'claude-sonnet-4-5';
 const PROSPEO_SEARCH_COMPANY = 'https://api.prospeo.io/search-company';
 const PROSPEO_SEARCH_PERSON  = 'https://api.prospeo.io/search-person';
 const PROSPEO_ENRICH         = 'https://api.prospeo.io/enrich-person';
+const SERPER_SEARCH           = 'https://google.serper.dev/search';
 
 // Valid values for the company_industry filter (Prospeo Industries enum).
 // Used to constrain Claude's industry picks in discover mode so they map to a real filter value.
@@ -413,7 +417,7 @@ async function callClaude(apiKey, systemPrompt, userPrompt, maxTokens = 4096) {
 }
 
 // ─── Prospeo: Company Search (discover mode — finds real, fast-growing companies) ──
-async function searchGrowingCompanies(prospeoKey, industries, excludeNames = [], targetCountry = '') {
+async function searchGrowingCompanies(prospeoKey, industries, excludeNames = [], targetCountry = '', poolSize = 10) {
   async function runSearch(extraFilters) {
     const prospeoAbort = new AbortController();
     const prospeoTimeout = setTimeout(() => prospeoAbort.abort(), 10000);
@@ -513,7 +517,7 @@ async function searchGrowingCompanies(prospeoKey, industries, excludeNames = [],
       hasStrongSignal,
     });
 
-    if (companies.length >= 3) break;
+    if (companies.length >= poolSize) break;
   }
 
   return companies;
@@ -610,44 +614,132 @@ async function findContacts(prospeoKey, companyName, titles) {
   }).filter(c => c.name);
 }
 
-// Finds and enriches contacts across multiple companies in one search-person call (discover mode).
-// Returns a map of companyName -> contacts[], capped per company.
-async function findContactsForCompanies(prospeoKey, companies, titles, perCompanyCap = 2) {
-  const companyNames = companies.map(c => c.name);
-  const rawCandidates = await searchPersonAtCompany(prospeoKey, companyNames, titles);
+// ─── Serper.dev: LinkedIn fallback search ────────────────────────────────────
+// Only used when Prospeo's own search-person index has nothing for a company —
+// a targeted backfill, not a replacement for the Prospeo-first pipeline.
+function extractLinkedInUrl(url) {
+  const match = url?.match(/https?:\/\/(?:www\.)?linkedin\.com\/in\/[^/?#]+/);
+  return match ? match[0] : null;
+}
 
-  const byCompany = {};
-  for (const name of companyNames) byCompany[name] = [];
+// Extracts a person's name from a LinkedIn page title, e.g.
+// "John Smith - VP Marketing at Acme | LinkedIn" -> "John Smith"
+function extractNameFromTitle(title) {
+  if (!title) return null;
+  const clean = title.replace(/\s*\|\s*LinkedIn\s*$/i, '').trim();
+  const name = clean.split(/\s+[-–|]\s+/)[0].trim();
+  if (name && /^[A-Za-z\s'.,-]{2,50}$/.test(name) && name.split(' ').length <= 5) return name;
+  return null;
+}
 
-  const seen = new Set();
-  for (const c of rawCandidates) {
-    if (!c.linkedinUrl || seen.has(c.linkedinUrl)) continue;
-    const bucket = companyNames.find(n => c.company && c.company.toLowerCase() === n.toLowerCase()) || companyNames[0];
-    if (byCompany[bucket].length >= perCompanyCap) continue;
-    seen.add(c.linkedinUrl);
-    byCompany[bucket].push(c);
+async function searchPersonViaSerper(serperKey, companyName, titles) {
+  const found = [];
+  for (const title of titles.slice(0, 2)) {
+    try {
+      const serperAbort = new AbortController();
+      const serperTimeout = setTimeout(() => serperAbort.abort(), 8000);
+      const res = await fetch(SERPER_SEARCH, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-KEY': serperKey },
+        signal: serperAbort.signal,
+        body: JSON.stringify({ q: `site:linkedin.com/in "${title}" "${companyName}"` }),
+      });
+      clearTimeout(serperTimeout);
+      if (!res.ok) {
+        console.error('[Serper] search failed:', res.status, await res.text().catch(() => ''));
+        continue;
+      }
+      const data = await res.json();
+      for (const r of (data.organic || [])) {
+        const linkedinUrl = extractLinkedInUrl(r.link);
+        const name = linkedinUrl ? extractNameFromTitle(r.title) : null;
+        if (!linkedinUrl || !name) continue;
+        found.push({ linkedinUrl, name, title, company: companyName });
+        break; // one hit per title is enough
+      }
+    } catch (err) {
+      console.error('[Serper] search error for', companyName, title, ':', err.message);
+    }
+  }
+  return found;
+}
+
+// ─── Contact-aware company selection (discover mode) ─────────────────────────
+// Picks `finalCount` companies from a larger candidate pool, preferring ones where
+// Prospeo's search-person actually has people — a company nobody can be found at
+// isn't a usable suggestion. Falls back to Serper (if configured) to backfill a
+// LinkedIn profile for companies Prospeo's index came up empty on, so at least
+// min(2, finalCount) of the final picks come with a real contact whenever the
+// data allows it.
+async function selectCompaniesWithContacts(prospeoKey, serperKey, candidates, titles, finalCount = 3, perCompanyCap = 2) {
+  const companyNames = candidates.map(c => c.name);
+  const rawHits = await searchPersonAtCompany(prospeoKey, companyNames, titles);
+
+  const hitsByCompany = {};
+  for (const name of companyNames) hitsByCompany[name] = [];
+  for (const h of rawHits) {
+    if (!h.linkedinUrl) continue;
+    const bucket = companyNames.find(n => h.company && h.company.toLowerCase() === n.toLowerCase());
+    if (bucket) hitsByCompany[bucket].push(h);
   }
 
-  const allCandidates = Object.values(byCompany).flat();
-  const enriched = await Promise.all(
-    allCandidates.map(c => enrichPerson(prospeoKey, c.linkedinUrl).catch(() => null))
-  );
-  const enrichedByUrl = new Map(allCandidates.map((c, i) => [c.linkedinUrl, enriched[i]]));
+  const withHits    = candidates.filter(c => hitsByCompany[c.name].length > 0);
+  const withoutHits = candidates.filter(c => hitsByCompany[c.name].length === 0);
 
-  const result = {};
-  for (const [company, candidates] of Object.entries(byCompany)) {
-    result[company] = candidates.map(c => {
-      const d = enrichedByUrl.get(c.linkedinUrl);
+  let selected = withHits.slice(0, finalCount);
+
+  const minWithContacts = Math.min(2, finalCount);
+  if (selected.length < minWithContacts && serperKey) {
+    for (const c of withoutHits) {
+      if (selected.length >= minWithContacts) break;
+      const serperHits = await searchPersonViaSerper(serperKey, c.name, titles);
+      if (serperHits.length > 0) {
+        hitsByCompany[c.name] = serperHits;
+        selected.push(c);
+        console.log('[Serper] Backfilled contact for', c.name);
+      }
+    }
+  }
+
+  // Fill any remaining slots with leftover candidates (still contact-less if we
+  // truly couldn't find anyone — better than showing fewer than finalCount companies).
+  for (const c of candidates) {
+    if (selected.length >= finalCount) break;
+    if (!selected.includes(c)) selected.push(c);
+  }
+  selected = selected.slice(0, finalCount);
+
+  // Enrich only the contacts belonging to the companies we actually kept.
+  const seenUrl = new Set();
+  const toEnrich = [];
+  for (const c of selected) {
+    for (const h of (hitsByCompany[c.name] || []).slice(0, perCompanyCap)) {
+      if (seenUrl.has(h.linkedinUrl)) continue;
+      seenUrl.add(h.linkedinUrl);
+      toEnrich.push(h);
+    }
+  }
+
+  const enriched = await Promise.all(
+    toEnrich.map(h => enrichPerson(prospeoKey, h.linkedinUrl).catch(() => null))
+  );
+  const enrichedByUrl = new Map(toEnrich.map((h, i) => [h.linkedinUrl, enriched[i]]));
+
+  const contactsByCompany = {};
+  for (const c of selected) {
+    contactsByCompany[c.name] = (hitsByCompany[c.name] || []).slice(0, perCompanyCap).map(h => {
+      const d = enrichedByUrl.get(h.linkedinUrl);
       return {
-        name:             d?.person?.full_name      || c.name || '',
-        title:            d?.person?.job_title      || c.title,
+        name:             d?.person?.full_name      || h.name || '',
+        title:            d?.person?.job_title      || h.title,
         email:            d?.person?.email?.address || null,
-        linkedin:         d?.person?.linkedin_url   || c.linkedinUrl,
+        linkedin:         d?.person?.linkedin_url   || h.linkedinUrl,
         linkedinIsSearch: false,
       };
     }).filter(c => c.name);
   }
-  return result;
+
+  return { selected, contactsByCompany };
 }
 
 // ─── Handler: Job Description Mode ──────────────────────────────────────────
@@ -692,7 +784,7 @@ async function handleJobMode(req, res, apiKey, prospeoKey) {
 }
 
 // ─── Handler: Discover Mode (CV-only, no job posting) ───────────────────────
-async function handleDiscoverMode(req, res, apiKey, prospeoKey) {
+async function handleDiscoverMode(req, res, apiKey, prospeoKey, serperKey) {
   const { background, targetCountry } = req.body || {};
   if (!background) {
     return res.status(400).json({ error: 'Missing required field: background.' });
@@ -722,26 +814,31 @@ async function handleDiscoverMode(req, res, apiKey, prospeoKey) {
     });
   }
 
-  // Find real, fast-growing companies in the target industries
-  let companies = [];
+  // Find real, fast-growing companies in the target industries — pull a larger pool
+  // than we need so contact-aware selection below has candidates to choose from.
+  let candidates = [];
   try {
-    companies = await searchGrowingCompanies(prospeoKey, industries.length ? industries : persona.industries, [], targetCountry);
+    candidates = await searchGrowingCompanies(prospeoKey, industries.length ? industries : persona.industries, [], targetCountry, 10);
   } catch (err) {
     console.error('[Prospeo] Company discovery failed:', err.message);
   }
 
-  if (!companies.length) {
+  if (!candidates.length) {
     return res.status(200).json({
       result: JSON.stringify({ persona, opportunities: [] }),
     });
   }
 
-  // Find contacts at each company
+  // Pick the final 3 companies, preferring ones Prospeo (or Serper, as a backfill)
+  // can actually find a real person at — see selectCompaniesWithContacts for why.
+  let companies = candidates.slice(0, 3);
   let contactsByCompany = {};
   try {
-    contactsByCompany = await findContactsForCompanies(prospeoKey, companies, titles);
+    const selection = await selectCompaniesWithContacts(prospeoKey, serperKey, candidates, titles, 3);
+    companies = selection.selected;
+    contactsByCompany = selection.contactsByCompany;
   } catch (err) {
-    console.error('[Prospeo] Contact search failed:', err.message);
+    console.error('[Prospeo] Contact-aware company selection failed:', err.message);
   }
 
   const baseOpportunities = companies.map(c => ({
@@ -781,6 +878,7 @@ module.exports = async function handler(req, res) {
 
   const apiKey     = process.env.ANTHROPIC_API_KEY;
   const prospeoKey = process.env.PROSPEO_API_KEY;
+  const serperKey  = process.env.SERPER_API_KEY;
 
   if (!apiKey) {
     console.error('ANTHROPIC_API_KEY environment variable is not set.');
@@ -789,11 +887,15 @@ module.exports = async function handler(req, res) {
     });
   }
 
+  if (!serperKey) {
+    console.warn('[Serper] SERPER_API_KEY not set — discover mode will skip the LinkedIn backfill for companies Prospeo has no contacts for.');
+  }
+
   const mode = req.body?.mode === 'discover' ? 'discover' : 'job';
 
   try {
     if (mode === 'discover') {
-      return await handleDiscoverMode(req, res, apiKey, prospeoKey);
+      return await handleDiscoverMode(req, res, apiKey, prospeoKey, serperKey);
     }
     return await handleJobMode(req, res, apiKey, prospeoKey);
   } catch (networkErr) {
