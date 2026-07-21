@@ -586,8 +586,22 @@ async function enrichPerson(prospeoKey, linkedinUrl) {
 }
 
 // Finds and enriches contacts for a single company + title list (job mode).
-async function findContacts(prospeoKey, companyName, titles) {
-  const rawCandidates = await searchPersonAtCompany(prospeoKey, [companyName], titles);
+// Serper (Google's live LinkedIn index) runs first per title, verified against the
+// company name — same rationale as discover mode's selectCompaniesWithContacts:
+// Prospeo's own search-person was observed returning stale/mismatched people.
+// Prospeo only fills in for titles Serper didn't find anyone for.
+async function findContacts(prospeoKey, serperKey, companyName, titles) {
+  let rawCandidates = [];
+  if (serperKey) {
+    rawCandidates = await searchPersonViaSerper(serperKey, companyName, titles, titles.length);
+  }
+
+  const foundTitles = new Set(rawCandidates.map(c => c.title));
+  const missingTitles = titles.filter(t => !foundTitles.has(t));
+  if (missingTitles.length > 0) {
+    const prospeoCandidates = await searchPersonAtCompany(prospeoKey, [companyName], missingTitles);
+    rawCandidates = rawCandidates.concat(prospeoCandidates);
+  }
 
   const seen = new Set();
   const candidates = [];
@@ -653,9 +667,9 @@ function resultMentionsCompany(result, companyName) {
   return needle.length > 0 && haystack.includes(needle);
 }
 
-async function searchPersonViaSerper(serperKey, companyName, titles) {
+async function searchPersonViaSerper(serperKey, companyName, titles, maxTitles = 2) {
   const found = [];
-  for (const title of titles.slice(0, 2)) {
+  for (const title of titles.slice(0, maxTitles)) {
     try {
       const serperAbort = new AbortController();
       const serperTimeout = setTimeout(() => serperAbort.abort(), 8000);
@@ -776,7 +790,7 @@ async function selectCompaniesWithContacts(prospeoKey, serperKey, candidates, ti
 }
 
 // ─── Handler: Job Description Mode ──────────────────────────────────────────
-async function handleJobMode(req, res, apiKey, prospeoKey) {
+async function handleJobMode(req, res, apiKey, prospeoKey, serperKey) {
   const { jobDesc, background, companyName, companySize } = req.body || {};
   if (!jobDesc || !background || !companyName || !companySize) {
     return res.status(400).json({ error: 'Missing required fields.' });
@@ -802,7 +816,7 @@ async function handleJobMode(req, res, apiKey, prospeoKey) {
     try {
       const titles = parsed?.decisionMakers?.titles || [];
       const contacts = titles.length > 0
-        ? await findContacts(prospeoKey, companyName.trim(), titles)
+        ? await findContacts(prospeoKey, serperKey, companyName.trim(), titles)
         : [];
       console.log('[Contacts] Found:', contacts.length);
       parsed.foundContacts = contacts;
@@ -930,7 +944,7 @@ module.exports = async function handler(req, res) {
     if (mode === 'discover') {
       return await handleDiscoverMode(req, res, apiKey, prospeoKey, serperKey);
     }
-    return await handleJobMode(req, res, apiKey, prospeoKey);
+    return await handleJobMode(req, res, apiKey, prospeoKey, serperKey);
   } catch (networkErr) {
     console.error('Unexpected error:', networkErr);
     return res.status(502).json({ error: 'Something went wrong reaching our services. Try again in a moment.' });

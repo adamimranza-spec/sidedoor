@@ -62,7 +62,7 @@ sidedoor/
 
 Company discovery (`search-company`) runs on Prospeo. Person-finding is Serper-first, Prospeo-fallback — see below for why.
 
-**Job mode** — unaffected by the discover-mode notes below (the user already named a specific company, so there's no "pick 3 companies" step to guard). Still uses `search-person` filtered by `company.names` + `person_job_title`, then `enrich-person` for a verified email.
+**Job mode** — no "pick 3 companies" step (the user already named a specific company), but contact-finding uses the same Serper-first, Prospeo-fallback order as discover mode. `findContacts` searches Serper per target title (verified against the company name), and only asks Prospeo's `search-person` for whichever titles Serper didn't find anyone for. `enrich-person` turns whatever's found into a verified email either way.
 
 **Discover mode** — two Claude calls sandwich the Prospeo/Serper calls, because Claude can't write a grounded pitch about a company it doesn't know about yet:
 1. Claude call #1 reads the CV and returns a persona summary, 2-3 target industries (constrained to Prospeo's `company_industry` enum — see `INDUSTRY_ENUM` in `api/generate.js`), and target decision-maker titles.

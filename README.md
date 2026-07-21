@@ -45,7 +45,7 @@ This takes about 15 minutes total.
 1. Go to [serper.dev](https://serper.dev) and sign up
 2. Copy your API key from the dashboard — you'll need it in Step 4
 
-> Discover mode finds contacts by searching Google for a matching LinkedIn profile first (verifying the company actually appears in the match before trusting it), then verifying that profile through Prospeo. Prospeo's own contact database is only used as a fallback when Serper finds nothing, since it was returning stale or mismatched people on its own. Skip this key and discover mode still runs, but on that weaker fallback path only.
+> Both modes find contacts by searching Google for a matching LinkedIn profile first (verifying the company actually appears in the match before trusting it), then verifying that profile through Prospeo. Prospeo's own contact database is only used as a fallback when Serper finds nothing, since it was returning stale or mismatched people on its own. Skip this key and both modes still run, but on that weaker fallback path only.
 
 > **Note:** The Claude API is paid, but very cheap. A $5 credit will handle hundreds of outreach kits. You won't be charged until you add a payment method and exceed the free tier.
 
