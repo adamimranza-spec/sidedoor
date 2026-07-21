@@ -199,9 +199,11 @@ Write like someone sending a message from their phone, not composing a document.
 ---
 
 DECISION-MAKER TARGETING BY COMPANY SIZE:
-- Under 50 people: Target CEO/Founder directly OR the most senior person in the specific function
+- Under 50 people: Target the Founder or CEO directly, OR the most senior person in the specific function
 - 50-200 people: Target VP or Director level in the relevant function
 - 200+ people: Target Director or Senior Manager level (VPs are harder to reach at this size)
+
+TITLE FORMAT — CRITICAL: each title in the output must be a single, realistic LinkedIn job title exactly as a real person would list it on their profile. Never join two roles with a slash or "or" (e.g. write "Founder" or write "CEO" — never "CEO/Founder"). This is used to search real LinkedIn profiles, and nobody's actual title is a slash-joined combination. If a role could plausibly go to either of two people, list them as two SEPARATE entries in the titles array instead of combining them into one string.
 
 Always recommend the candidate verify on LinkedIn who actually manages the team being hired into, since org charts change.
 
@@ -278,7 +280,9 @@ Read the background and figure out:
 1. Their core professional persona — what they actually do and who they do it for (e.g. "B2B demand generation marketer with a SaaS focus" not just "marketer").
 2. 2-3 target industries where fast-growing companies would plausibly need exactly this skill set right now. You MUST choose industries ONLY from this exact list (copy the string exactly, case-sensitive):
 ${INDUSTRY_ENUM.map(i => `- ${i}`).join('\n')}
-3. 2-3 decision-maker job titles this person should target once we find real companies — the person who would actually hire for this skill set. Prefer VP/Director/Head-of level titles in the relevant function, plus CEO/Founder as a fallback for smaller companies.
+3. 2-3 decision-maker job titles this person should target once we find real companies — the person who would actually hire for this skill set. Prefer VP/Director/Head-of level titles in the relevant function, plus Founder or CEO as a fallback for smaller companies.
+
+TITLE FORMAT — CRITICAL: each title must be a single, realistic LinkedIn job title exactly as a real person would list it on their profile. Never join two roles with a slash or "or" (e.g. write "Founder" or write "CEO" — never "CEO/Founder"). This is used to search real LinkedIn profiles, and nobody's actual title is a slash-joined combination. If a role could plausibly go to either of two people, list them as two SEPARATE entries in the titles array instead of combining them into one string.
 
 Return ONLY this JSON structure:
 {
@@ -646,6 +650,23 @@ function extractNameFromTitle(title) {
   return null;
 }
 
+// Safety net independent of prompt wording: Claude is instructed not to output
+// slash-joined titles like "CEO/Founder", but LLM instruction-following isn't
+// guaranteed. A compound title like that will never literally match a real
+// LinkedIn headline (intitle:"CEO/Founder" matches almost nobody), so split
+// any that slip through into separate, individually searchable titles.
+function splitCompoundTitles(titles) {
+  const result = [];
+  for (const t of titles || []) {
+    if (!t) continue;
+    for (const part of t.split(/\s*\/\s*|\s+or\s+/i)) {
+      const trimmed = part.trim();
+      if (trimmed && !result.includes(trimmed)) result.push(trimmed);
+    }
+  }
+  return result;
+}
+
 // Strips common legal suffixes so "Future AI Inc." matches a LinkedIn snippet
 // that just says "Future AI" — those suffixes routinely get dropped in bios.
 function normalizeCompanyName(name) {
@@ -833,7 +854,8 @@ async function handleJobMode(req, res, apiKey, prospeoKey, serperKey) {
 
   if (prospeoKey) {
     try {
-      const titles = parsed?.decisionMakers?.titles || [];
+      const titles = splitCompoundTitles(parsed?.decisionMakers?.titles || []);
+      if (parsed?.decisionMakers) parsed.decisionMakers.titles = titles; // keep displayed chips consistent with what's actually searched
       const contacts = titles.length > 0
         ? await findContacts(prospeoKey, serperKey, companyName.trim(), titles)
         : [];
@@ -872,7 +894,8 @@ async function handleDiscoverMode(req, res, apiKey, prospeoKey, serperKey) {
   }
 
   const industries = persona.industries.filter(i => INDUSTRY_ENUM.includes(i));
-  const titles = persona.titles || [];
+  const titles = splitCompoundTitles(persona.titles || []);
+  persona.titles = titles; // keep the displayed persona chips consistent with what's actually searched
 
   if (!prospeoKey) {
     return res.status(500).json({
