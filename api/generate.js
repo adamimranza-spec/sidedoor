@@ -690,41 +690,38 @@ async function searchPersonViaSerper(serperKey, companyName, titles) {
 }
 
 // ─── Contact-aware company selection (discover mode) ─────────────────────────
-// Picks `finalCount` companies from a larger candidate pool, preferring ones where
-// Prospeo's search-person actually has people — a company nobody can be found at
-// isn't a usable suggestion. Falls back to Serper (if configured) to backfill a
-// LinkedIn profile for companies Prospeo's index came up empty on, so at least
-// min(2, finalCount) of the final picks come with a real contact whenever the
-// data allows it.
+// Picks `finalCount` companies from a larger candidate pool, preferring ones a
+// real person can actually be found at — a company nobody can be found at isn't
+// a usable suggestion. For each candidate, Serper (Google's live index of
+// LinkedIn) runs first — it has proven more reliable than Prospeo's own
+// aggregated search-person database, which was returning stale/mismatched
+// people. Prospeo's search-person only runs as a batched fallback for whichever
+// candidates Serper found nothing for. Either way, so at least min(2, finalCount)
+// of the final picks come with a real contact whenever the data allows it.
 async function selectCompaniesWithContacts(prospeoKey, serperKey, candidates, titles, finalCount = 3, perCompanyCap = 2) {
-  const companyNames = candidates.map(c => c.name);
-  const rawHits = await searchPersonAtCompany(prospeoKey, companyNames, titles);
-
   const hitsByCompany = {};
-  for (const name of companyNames) hitsByCompany[name] = [];
-  for (const h of rawHits) {
-    if (!h.linkedinUrl) continue;
-    const bucket = companyNames.find(n => h.company && h.company.toLowerCase() === n.toLowerCase());
-    if (bucket) hitsByCompany[bucket].push(h);
+
+  if (serperKey) {
+    await Promise.all(candidates.map(async c => {
+      hitsByCompany[c.name] = await searchPersonViaSerper(serperKey, c.name, titles);
+    }));
+  } else {
+    for (const c of candidates) hitsByCompany[c.name] = [];
   }
 
-  const withHits    = candidates.filter(c => hitsByCompany[c.name].length > 0);
-  const withoutHits = candidates.filter(c => hitsByCompany[c.name].length === 0);
-
-  let selected = withHits.slice(0, finalCount);
-
-  const minWithContacts = Math.min(2, finalCount);
-  if (selected.length < minWithContacts && serperKey) {
-    for (const c of withoutHits) {
-      if (selected.length >= minWithContacts) break;
-      const serperHits = await searchPersonViaSerper(serperKey, c.name, titles);
-      if (serperHits.length > 0) {
-        hitsByCompany[c.name] = serperHits;
-        selected.push(c);
-        console.log('[Serper] Backfilled contact for', c.name);
-      }
+  // Prospeo fallback, batched in one call, only for candidates Serper missed.
+  const needsFallback = candidates.filter(c => hitsByCompany[c.name].length === 0);
+  if (needsFallback.length > 0) {
+    const fallbackNames = needsFallback.map(c => c.name);
+    const prospeoHits = await searchPersonAtCompany(prospeoKey, fallbackNames, titles);
+    for (const c of needsFallback) {
+      hitsByCompany[c.name] = prospeoHits.filter(h => h.company && h.company.toLowerCase() === c.name.toLowerCase());
+      if (hitsByCompany[c.name].length > 0) console.log('[Prospeo] Fallback contact found for', c.name);
     }
   }
+
+  const withHits = candidates.filter(c => hitsByCompany[c.name].length > 0);
+  let selected = withHits.slice(0, finalCount);
 
   // Fill any remaining slots with leftover candidates (still contact-less if we
   // truly couldn't find anyone — better than showing fewer than finalCount companies).
@@ -733,6 +730,17 @@ async function selectCompaniesWithContacts(prospeoKey, serperKey, candidates, ti
     if (!selected.includes(c)) selected.push(c);
   }
   selected = selected.slice(0, finalCount);
+
+  // Dedupe each company's hits by LinkedIn URL — the same profile can otherwise
+  // show up twice if it matched more than one searched title.
+  for (const c of selected) {
+    const seen = new Set();
+    hitsByCompany[c.name] = (hitsByCompany[c.name] || []).filter(h => {
+      if (seen.has(h.linkedinUrl)) return false;
+      seen.add(h.linkedinUrl);
+      return true;
+    });
+  }
 
   // Enrich only the contacts belonging to the companies we actually kept.
   const seenUrl = new Set();

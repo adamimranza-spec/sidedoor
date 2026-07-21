@@ -11,13 +11,13 @@ Sidedoor helps job seekers bypass the ATS black hole by going directly to decisi
 
 ## How to deploy (step by step, no coding experience needed)
 
-You need four things before you start (plus one optional one):
+You need five things before you start:
 
 1. A free **GitHub** account — [github.com](https://github.com)
 2. A free **Vercel** account — [vercel.com](https://vercel.com)
 3. A **Claude API key** from Anthropic — [console.anthropic.com](https://console.anthropic.com)
-4. A **Prospeo API key** — [prospeo.io](https://prospeo.io) (powers contact search and company discovery; a free trial is available)
-5. *(Optional)* A **Serper.dev API key** — [serper.dev](https://serper.dev) (backfills a LinkedIn contact in discover mode when Prospeo's own database has nobody indexed at a suggested company; discover mode works without it, just with a weaker guarantee that every suggested company comes with a real contact)
+4. A **Prospeo API key** — [prospeo.io](https://prospeo.io) (powers company discovery and email verification; a free trial is available)
+5. A **Serper.dev API key** — [serper.dev](https://serper.dev) (finds real LinkedIn contacts in discover mode — technically optional, but discover mode falls back to Prospeo's own contact database without it, which has been unreliable, so treat this as required)
 
 This takes about 15 minutes total.
 
@@ -40,12 +40,12 @@ This takes about 15 minutes total.
 > Without this key: job mode still works but won't find real contacts, and discover mode (the CV-only "who needs me" flow) won't work at all — it depends entirely on Prospeo to find target companies.
 6. Save it somewhere safe (a notes app is fine). You'll need it in Step 4
 
-### Step 1c — (Optional) Get your Serper.dev API key
+### Step 1c — Get your Serper.dev API key
 
 1. Go to [serper.dev](https://serper.dev) and sign up
 2. Copy your API key from the dashboard — you'll need it in Step 4
 
-> Discover mode picks the 3 companies to suggest partly by whether Prospeo can actually find a real person there — a company with nobody findable isn't a useful suggestion. When Prospeo's own database has nobody indexed at a candidate company, this key lets Sidedoor do a quick Google search for a matching LinkedIn profile instead, then verify it through Prospeo. Skip this and discover mode still works, it just falls back to Prospeo alone.
+> Discover mode finds contacts by searching Google for a matching LinkedIn profile first (verifying the company actually appears in the match before trusting it), then verifying that profile through Prospeo. Prospeo's own contact database is only used as a fallback when Serper finds nothing, since it was returning stale or mismatched people on its own. Skip this key and discover mode still runs, but on that weaker fallback path only.
 
 > **Note:** The Claude API is paid, but very cheap. A $5 credit will handle hundreds of outreach kits. You won't be charged until you add a payment method and exceed the free tier.
 
@@ -95,7 +95,7 @@ This is the most important step. These keys tell Vercel how to connect to Claude
 5. Make sure **Production**, **Preview**, and **Development** are all checked
 6. Click **Save**
 7. Repeat steps 3–6 for a second variable: **Key** = `PROSPEO_API_KEY`, **Value** = your Prospeo key from Step 1b
-8. *(Optional)* Repeat steps 3–6 for a third variable: **Key** = `SERPER_API_KEY`, **Value** = your Serper key from Step 1c
+8. Repeat steps 3–6 for a third variable: **Key** = `SERPER_API_KEY`, **Value** = your Serper key from Step 1c
 
 ---
 
@@ -146,8 +146,8 @@ You've hit Anthropic's rate limit. Wait 30–60 seconds and try again.
 **Kit generates but "Real Contacts Found" is always empty, or "Show me who needs me" mode fails**
 `PROSPEO_API_KEY` is missing or invalid — check Step 4. You can also check the Vercel function logs (Deployments → your latest deployment → Functions) for lines starting with `[Prospeo]` to see what went wrong.
 
-**Discover mode suggests companies with no contacts at all**
-Discover mode tries hard to avoid this — it pulls a pool of candidate companies and picks the 3 to show based partly on whether Prospeo (or Serper, if configured) can actually find someone there, so at least 2 of the 3 should come with a real contact. If you're seeing all 3 empty, add `SERPER_API_KEY` (Step 1c) if you haven't, and check the Vercel function logs for `[Prospeo]` and `[Serper]` lines to see what came back.
+**Discover mode suggests companies with no contacts at all, or contacts that look wrong**
+Discover mode picks the 3 companies to show partly based on whether a real person can actually be found there — Serper searches Google for a matching LinkedIn profile first, and only falls back to Prospeo's own contact database if Serper finds nothing. If `SERPER_API_KEY` isn't set, it's running on that weaker Prospeo-only fallback the whole time — add it (Step 1c). If contacts still look wrong with Serper configured, check the Vercel function logs for `[Serper]` lines — they log when a match gets rejected for not actually mentioning the company.
 
 **The page loads but nothing happens when I click Generate**
 Open your browser's developer console (press F12 → Console tab) and look for any red error messages. Share these if you need help debugging.
