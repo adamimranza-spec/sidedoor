@@ -659,12 +659,25 @@ function normalizeCompanyName(name) {
 
 // A generic company name (e.g. "Future AI") makes a plain Google search unreliable —
 // it can match a profile that just happens to mention similar words, not someone who
-// actually works there. Require the company name to actually appear in the matched
-// result before trusting it, instead of accepting whatever ranked first.
+// actually works there. LinkedIn's page <title> is auto-generated from the person's
+// CURRENT headline, whereas the snippet can quote text from anywhere on the page
+// (past experience included) — so verification only trusts the title, never the
+// snippet, or a "former VP Marketing at Acme" match slips through as if current.
 function resultMentionsCompany(result, companyName) {
-  const haystack = normalizeCompanyName(`${result.title || ''} ${result.snippet || ''}`);
+  const haystack = normalizeCompanyName(result.title || '');
   const needle = normalizeCompanyName(companyName);
   return needle.length > 0 && haystack.includes(needle);
+}
+
+// Same reasoning, for the job title: require the searched title to appear in the
+// page title too (not just the company), and reject anything that reads as a past
+// role. Without this, a search for "VP Marketing" + "Acme" can match someone whose
+// current headline is a completely different role, just because both terms appear
+// somewhere on their profile from years of work history.
+function resultReflectsCurrentRole(result, title) {
+  const pageTitle = (result.title || '').toLowerCase();
+  if (/\b(former|ex[- ]|previously|past|used to)\b/.test(pageTitle)) return false;
+  return pageTitle.includes(title.toLowerCase());
 }
 
 async function searchPersonViaSerper(serperKey, companyName, titles, maxTitles = 2) {
@@ -677,7 +690,9 @@ async function searchPersonViaSerper(serperKey, companyName, titles, maxTitles =
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-API-KEY': serperKey },
         signal: serperAbort.signal,
-        body: JSON.stringify({ q: `site:linkedin.com/in "${title}" "${companyName}"` }),
+        // intitle: forces the match into LinkedIn's auto-generated page title (current
+        // headline) rather than letting Google match anywhere on the page.
+        body: JSON.stringify({ q: `site:linkedin.com/in intitle:"${title}" intitle:"${companyName}"` }),
       });
       clearTimeout(serperTimeout);
       if (!res.ok) {
@@ -690,7 +705,11 @@ async function searchPersonViaSerper(serperKey, companyName, titles, maxTitles =
         const name = linkedinUrl ? extractNameFromTitle(r.title) : null;
         if (!linkedinUrl || !name) continue;
         if (!resultMentionsCompany(r, companyName)) {
-          console.log('[Serper] Skipping unverified match for', companyName, '—', r.title);
+          console.log('[Serper] Skipping — company not in current headline for', companyName, ':', r.title);
+          continue;
+        }
+        if (!resultReflectsCurrentRole(r, title)) {
+          console.log('[Serper] Skipping — title not confirmed current for', companyName, ':', r.title);
           continue;
         }
         found.push({ linkedinUrl, name, title, company: companyName });
