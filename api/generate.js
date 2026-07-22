@@ -552,6 +552,11 @@ async function searchPersonAtCompany(prospeoKey, companyNames, titles) {
     }
     const data = await res.json();
     console.log('[Prospeo] search-person results:', data?.results?.length || 0);
+    if (data?.results?.[0]) {
+      // Diagnostic — field names for company/title on a search-person result are
+      // still not 100% confirmed against live traffic. Remove once confirmed.
+      console.log('[Prospeo] sample search-person result:', JSON.stringify(data.results[0]).slice(0, 1800));
+    }
     return (data?.results || []).map(r => ({
       linkedinUrl: r.person?.linkedin_url || null,
       name:        r.person?.full_name || null,
@@ -580,9 +585,18 @@ async function enrichPerson(prospeoKey, linkedinUrl) {
       }),
     });
     clearTimeout(prospeoTimeout);
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.error('[Prospeo] enrich-person failed:', res.status, await res.text().catch(() => ''));
+      return null;
+    }
     const data = await res.json();
-    if (data.error) return null;
+    if (data.error) {
+      console.error('[Prospeo] enrich-person returned an error for', linkedinUrl, ':', JSON.stringify(data).slice(0, 500));
+      return null;
+    }
+    // Diagnostic — confirms what Prospeo itself believes this person's current
+    // title/company is, useful for cross-checking a Serper-sourced match.
+    console.log('[Prospeo] enrich-person result for', linkedinUrl, ':', JSON.stringify(data).slice(0, 1200));
     return data;
   } catch (_) {
     return null;
@@ -711,9 +725,12 @@ async function searchPersonViaSerper(serperKey, companyName, titles, maxTitles =
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-API-KEY': serperKey },
         signal: serperAbort.signal,
-        // intitle: forces the match into LinkedIn's auto-generated page title (current
-        // headline) rather than letting Google match anywhere on the page.
-        body: JSON.stringify({ q: `site:linkedin.com/in intitle:"${title}" intitle:"${companyName}"` }),
+        // A plain quoted search, not intitle: — two chained intitle: clauses appear to
+        // over-constrain Google's ranking and were suppressing genuine current matches.
+        // The strictness lives in code instead (resultMentionsCompany /
+        // resultReflectsCurrentRole below both check the returned title field only),
+        // so we don't depend on assumptions about how Serper passes through operators.
+        body: JSON.stringify({ q: `site:linkedin.com/in "${title}" "${companyName}"` }),
       });
       clearTimeout(serperTimeout);
       if (!res.ok) {
@@ -721,6 +738,7 @@ async function searchPersonViaSerper(serperKey, companyName, titles, maxTitles =
         continue;
       }
       const data = await res.json();
+      console.log('[Serper] query:', `"${title}" "${companyName}"`, '— raw results:', JSON.stringify((data.organic || []).map(r => ({ title: r.title, link: r.link }))).slice(0, 1500));
       for (const r of (data.organic || [])) {
         const linkedinUrl = extractLinkedInUrl(r.link);
         const name = linkedinUrl ? extractNameFromTitle(r.title) : null;
@@ -769,12 +787,18 @@ async function selectCompaniesWithContacts(prospeoKey, serperKey, candidates, ti
     const fallbackNames = needsFallback.map(c => c.name);
     const prospeoHits = await searchPersonAtCompany(prospeoKey, fallbackNames, titles);
     for (const c of needsFallback) {
-      hitsByCompany[c.name] = prospeoHits.filter(h => h.company && h.company.toLowerCase() === c.name.toLowerCase());
+      // Normalized comparison, not exact string equality — Prospeo's own company.name
+      // on a search-person result can be formatted slightly differently (legal suffix,
+      // punctuation) than the name search-company gave us for the same real company,
+      // and an exact match was silently dropping otherwise-valid hits.
+      const target = normalizeCompanyName(c.name);
+      hitsByCompany[c.name] = prospeoHits.filter(h => h.company && normalizeCompanyName(h.company) === target);
       if (hitsByCompany[c.name].length > 0) console.log('[Prospeo] Fallback contact found for', c.name);
     }
   }
 
   const withHits = candidates.filter(c => hitsByCompany[c.name].length > 0);
+  console.log('[selectCompaniesWithContacts] Candidates checked:', candidates.map(c => `${c.name} (${hitsByCompany[c.name].length} hits)`).join(', '));
   let selected = withHits.slice(0, finalCount);
 
   // Fill any remaining slots with leftover candidates (still contact-less if we
